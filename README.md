@@ -2,6 +2,9 @@
 
 This project is a minimal Spring Boot setup for practicing Kafka producers and consumers.
 
+## Study Notes
+- See `docs/study/README.md`
+
 ## Quick Start
 
 1) Start Kafka (KRaft mode)
