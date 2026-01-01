@@ -26,7 +26,7 @@ curl -X POST http://localhost:8080/api/messages \
 
 4) Watch the application logs for:
 ```
-Consumed message: hello kafka
+Consumed message: hello kafka (key=null, partition=..., offset=...)
 ```
 
 ## Manual Test (docker compose)
@@ -50,7 +50,7 @@ curl -X POST http://localhost:8080/api/messages \
 
 4) Check logs for:
 ```
-Consumed message: manual test
+Consumed message: manual test (key=null, partition=..., offset=...)
 ```
 
 5) Stop Kafka when done

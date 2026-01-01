@@ -10,11 +10,11 @@
 4. [04. Consumer 기초](04-consumer.md)
 5. [05. 로컬 실행: docker-compose(KRaft)](05-local-dev-docker-kraft.md)
 6. [06. 이 프로젝트의 Spring Kafka 코드 읽기](06-spring-kafka-in-this-project.md)
+7. [07. 키 기반 파티셔닝과 순서 보장](07-key-partition-ordering.md)
 
 ## 이 프로젝트에서 바로 해볼 것
 - Kafka 기동: `docker compose up -d`
 - 앱 실행: `./gradlew bootRun`
 - 메시지 발행:
   - `curl -X POST http://localhost:8080/api/messages -H "Content-Type: application/json" -d '{"message":"hello kafka"}'`
-- 로그 확인: `Consumed message: hello kafka`
-
+- 로그 확인: `Consumed message: hello kafka (key=null, partition=..., offset=...)`

@@ -16,12 +16,12 @@
 ## 3) Producer(발행자)
 `src/main/java/com/study/kafka/web/MessageController.java`
 - `POST /api/messages` 요청을 받으면 `KafkaTemplate`로 토픽에 value를 전송한다.
-- 현재는 key 없이 value만 보내므로, 파티션이 여러 개가 되면 라우팅이 “균등 분배” 쪽으로 동작할 가능성이 높다.
+- 요청에 `key`가 있으면 `send(topic, key, message)`로 보내고, 없으면 `send(topic, message)`로 보낸다.
 
 ## 4) Consumer(수신자)
 `src/main/java/com/study/kafka/messaging/MessageListener.java`
 - `@KafkaListener`가 토픽을 구독한다.
-- 수신하면 `Consumed message: ...` 로그를 출력한다.
+- 수신하면 `Consumed message: ... (key=..., partition=..., offset=...)` 형태로 로그를 출력한다.
 
 ## 5) 테스트에서 Kafka를 어떻게 다루나?
 `src/test/java/com/study/kafka/KafkaMessagingIntegrationTest.java`
@@ -31,4 +31,3 @@
 테스트에서 Embedded Kafka를 쓰는 이유:
 - docker/kafka 의존 없이 테스트가 돌아가고
 - 토픽/포트 충돌 같은 환경 이슈를 줄일 수 있다.
-
