@@ -25,7 +25,12 @@ public class MessageController {
 
 	@PostMapping
 	public ResponseEntity<String> send(@RequestBody MessageRequest request) {
-		kafkaTemplate.send(topic, request.message());
+		if (request.key() == null || request.key().isBlank()) {
+			kafkaTemplate.send(topic, request.message());
+		}
+		else {
+			kafkaTemplate.send(topic, request.key(), request.message());
+		}
 		return ResponseEntity.accepted().body("sent");
 	}
 }
