@@ -12,6 +12,7 @@
 `infra-mq/src/main/java/com/study/kafka/config/KafkaConfig.java`
 - `NewTopic` 빈을 등록해서 토픽을 “있으면 그대로, 없으면 생성”하도록 한다.
 - 로컬 단일 브로커 기준으로 `partitions=1`, `replicas=1`로 되어 있다.
+- `app.mq.type=kafka`일 때만 빈이 활성화된다(기본값이기도 함).
 
 ## 3) Producer(발행자)
 `kafka-study/src/main/java/com/study/kafka/web/MessageController.java`

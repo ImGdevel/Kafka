@@ -2,6 +2,8 @@ package com.study.rabbit;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.study.messaging.MessagePublisher;
@@ -10,6 +12,8 @@ import com.study.messaging.MessagePublisher;
  * RabbitMQ로 메시지를 발행하는 구현체.
  */
 @Service
+@ConditionalOnProperty(name = "app.mq.type", havingValue = "rabbit")
+@ConditionalOnClass(RabbitTemplate.class)
 public class RabbitMessagePublisher implements MessagePublisher {
 
 	private final RabbitTemplate rabbitTemplate;
