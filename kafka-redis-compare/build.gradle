@@ -1,0 +1,5 @@
+dependencies {
+	implementation project(':kafka-infra')
+	implementation 'org.springframework.kafka:spring-kafka'
+	implementation 'org.springframework.boot:spring-boot-starter'
+}

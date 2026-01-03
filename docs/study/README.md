@@ -11,6 +11,7 @@
 5. [05. 로컬 실행: docker-compose(KRaft)](05-local-dev-docker-kraft.md)
 6. [06. 이 프로젝트의 Spring Kafka 코드 읽기](06-spring-kafka-in-this-project.md)
 7. [07. 키 기반 파티셔닝과 순서 보장](07-key-partition-ordering.md)
+8. [08. 오프셋 커밋/재처리 + 에러 핸들링(DLT)](08-error-handling-ack-dlt.md)
 
 ## 이 프로젝트에서 바로 해볼 것
 - Kafka 기동: `docker compose up -d`

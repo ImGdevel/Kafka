@@ -1,1 +1,5 @@
 rootProject.name = 'kafka'
+
+include 'kafka-infra'
+include 'kafka-study'
+include 'kafka-redis-compare'

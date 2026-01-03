@@ -22,10 +22,11 @@ import org.springframework.kafka.test.context.EmbeddedKafka;
 	classes = {KafkaApplication.class, KafkaMessagingIntegrationTest.TestConfig.class},
 	properties = {
 		"spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
-		"app.kafka.topic=test-topic"
+		"app.kafka.topic=test-topic",
+		"app.kafka.dlt-topic=test-topic-dlt"
 	}
 )
-@EmbeddedKafka(partitions = 3, topics = {"test-topic"})
+@EmbeddedKafka(partitions = 3, topics = {"test-topic", "test-topic-dlt"})
 class KafkaMessagingIntegrationTest {
 
 	@Autowired
@@ -57,6 +58,17 @@ class KafkaMessagingIntegrationTest {
 		assertThat(records.get(0).offset()).isLessThan(records.get(1).offset());
 	}
 
+	@Test
+	void failureIsSentToDltAfterRetry() throws Exception {
+		testListener.reset(0);
+		kafkaTemplate.send("test-topic", "will fail");
+
+		List<ConsumerRecord<String, String>> dltRecords = testListener.awaitDltRecords(1);
+		assertThat(dltRecords).hasSize(1);
+		assertThat(dltRecords.get(0).value()).isEqualTo("will fail");
+		assertThat(dltRecords.get(0).topic()).isEqualTo("test-topic-dlt");
+	}
+
 	@TestConfiguration
 	static class TestConfig {
 
@@ -69,7 +81,9 @@ class KafkaMessagingIntegrationTest {
 	static class TestListener {
 
 		private final AtomicReference<CountDownLatch> latch = new AtomicReference<>(new CountDownLatch(0));
+		private final AtomicReference<CountDownLatch> dltLatch = new AtomicReference<>(new CountDownLatch(0));
 		private final List<ConsumerRecord<String, String>> records = new ArrayList<>();
+		private final List<ConsumerRecord<String, String>> dltRecords = new ArrayList<>();
 
 		@KafkaListener(topics = "${app.kafka.topic}", groupId = "test-group")
 		synchronized void listen(ConsumerRecord<String, String> record) {
@@ -77,9 +91,17 @@ class KafkaMessagingIntegrationTest {
 			latch.get().countDown();
 		}
 
+		@KafkaListener(topics = "${app.kafka.dlt-topic}", groupId = "test-group-dlt")
+		synchronized void listenDlt(ConsumerRecord<String, String> record) {
+			dltRecords.add(record);
+			dltLatch.get().countDown();
+		}
+
 		synchronized void reset(int expectedCount) {
 			records.clear();
+			dltRecords.clear();
 			latch.set(new CountDownLatch(expectedCount));
+			dltLatch.set(new CountDownLatch(0));
 		}
 
 		List<ConsumerRecord<String, String>> awaitRecords(int expectedCount) throws InterruptedException {
@@ -89,6 +111,17 @@ class KafkaMessagingIntegrationTest {
 			}
 			synchronized (this) {
 				return List.copyOf(records);
+			}
+		}
+
+		List<ConsumerRecord<String, String>> awaitDltRecords(int expectedCount) throws InterruptedException {
+			dltLatch.set(new CountDownLatch(expectedCount));
+			boolean completed = dltLatch.get().await(10, TimeUnit.SECONDS);
+			if (!completed) {
+				return List.of();
+			}
+			synchronized (this) {
+				return List.copyOf(dltRecords);
 			}
 		}
 	}

@@ -12,9 +12,20 @@ public class KafkaConfig {
 	@Value("${app.kafka.topic}")
 	private String topic;
 
+	@Value("${app.kafka.dlt-topic}")
+	private String dltTopic;
+
 	@Bean
 	public NewTopic studyTopic() {
 		return TopicBuilder.name(topic)
+			.partitions(3)
+			.replicas(1)
+			.build();
+	}
+
+	@Bean
+	public NewTopic studyDltTopic() {
+		return TopicBuilder.name(dltTopic)
 			.partitions(3)
 			.replicas(1)
 			.build();

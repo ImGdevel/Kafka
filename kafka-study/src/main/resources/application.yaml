@@ -17,3 +17,4 @@ spring:
 app:
   kafka:
     topic: study-topic
+    dlt-topic: study-topic-dlt

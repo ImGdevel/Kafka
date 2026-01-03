@@ -1,31 +1,41 @@
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '3.5.9'
-	id 'io.spring.dependency-management' version '1.1.7'
+	id 'org.springframework.boot' version '3.5.9' apply false
+	id 'io.spring.dependency-management' version '1.1.7' apply false
 }
 
 group = 'com.study'
 version = '0.0.1-SNAPSHOT'
 description = 'study to message queue and kafka'
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(21)
+subprojects {
+	apply plugin: 'java'
+	apply plugin: 'io.spring.dependency-management'
+
+	group = rootProject.group
+	version = rootProject.version
+
+	java {
+		toolchain {
+			languageVersion = JavaLanguageVersion.of(21)
+		}
 	}
-}
 
-repositories {
-	mavenCentral()
-}
+	repositories {
+		mavenCentral()
+	}
 
-dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'org.springframework.kafka:spring-kafka'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	testImplementation 'org.springframework.kafka:spring-kafka-test'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
+	dependencies {
+		testImplementation 'org.springframework.boot:spring-boot-starter-test'
+		testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	}
 
-tasks.named('test') {
-	useJUnitPlatform()
+	dependencyManagement {
+		imports {
+			mavenBom "org.springframework.boot:spring-boot-dependencies:3.5.9"
+		}
+	}
+
+	tasks.named('test') {
+		useJUnitPlatform()
+	}
 }
