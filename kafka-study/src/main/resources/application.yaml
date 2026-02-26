@@ -7,12 +7,21 @@ spring:
       group-id: study-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      partition-assignment-strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+      isolation-level: read_committed  # 트랜잭션 abort된 메시지는 소비하지 않음 (EOS 완성)
+      properties:
+        spring.json.trusted.packages: "com.study.messaging.dto"
+        spring.json.value.default.type: com.study.messaging.dto.MessagePayload
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      transaction-id-prefix: study-tx-
+      properties:
+        enable.idempotence: true  # 기본값 true이지만 EOS 학습용으로 명시 선언
     listener:
       missing-topics-fatal: false
+      ack-mode: MANUAL_IMMEDIATE
 
 app:
   mq:
