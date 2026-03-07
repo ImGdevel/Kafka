@@ -1,6 +1,6 @@
 # Spring Kafka Study
 
-Spring Boot 기반으로 Kafka 메시징 흐름을 실습하고, 같은 인터페이스로 Redis Streams까지 비교하는 저장소다.
+Spring Boot 기반으로 Kafka 메시징 흐름을 실습하고, 같은 인터페이스로 Redis Streams까지 비교하는 기록 저장소 입니다.
 
 <br />
 
