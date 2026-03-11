@@ -1,6 +1,6 @@
 package com.study.rediscompare.web;
 
-import com.study.messaging.MessagePublisher;
+import com.study.rediscompare.service.RedisCompareMessageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -11,15 +11,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/messages")
 public class MessageController {
 
-	private final MessagePublisher messagePublisher;
+	private final RedisCompareMessageService messageService;
 
-	public MessageController(MessagePublisher messagePublisher) {
-		this.messagePublisher = messagePublisher;
+	public MessageController(RedisCompareMessageService messageService) {
+		this.messageService = messageService;
 	}
 
 	@PostMapping
 	public ResponseEntity<String> send(@RequestBody MessageRequest request) {
-		messagePublisher.publish(request.message(), request.key());
+		messageService.send(request);
 		return ResponseEntity.accepted().body("sent");
 	}
 }

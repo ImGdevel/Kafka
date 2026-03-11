@@ -11,6 +11,9 @@ import org.springframework.kafka.config.TopicBuilder;
 @ConditionalOnProperty(name = "app.mq.type", havingValue = "kafka", matchIfMissing = true)
 public class KafkaConfig {
 
+	private static final int PARTITION_COUNT = 3;
+	private static final int REPLICA_COUNT = 1;
+
 	@Value("${app.kafka.topic}")
 	private String topic;
 
@@ -19,17 +22,18 @@ public class KafkaConfig {
 
 	@Bean
 	public NewTopic studyTopic() {
-		return TopicBuilder.name(topic)
-			.partitions(3)
-			.replicas(1)
-			.build();
+		return createTopic(topic);
 	}
 
 	@Bean
 	public NewTopic studyDltTopic() {
-		return TopicBuilder.name(dltTopic)
-			.partitions(3)
-			.replicas(1)
+		return createTopic(dltTopic);
+	}
+
+	private NewTopic createTopic(String topicName) {
+		return TopicBuilder.name(topicName)
+			.partitions(PARTITION_COUNT)
+			.replicas(REPLICA_COUNT)
 			.build();
 	}
 }

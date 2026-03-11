@@ -1,7 +1,6 @@
 package com.study.rediscompare.config;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.UUID;
 
 import com.study.rediscompare.listener.RedisStreamListener;
@@ -22,7 +21,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 @EnableScheduling
 public class RedisStreamConfig {
 
-	private final String groupName = "redis-demo-group";
+	private static final String GROUP_NAME = "redis-demo-group";
+	private static final long POLL_DELAY_MILLIS = 1000L;
+	private static final int READ_COUNT = 10;
+	private static final Duration BLOCK_TIMEOUT = Duration.ofSeconds(1);
+
 	private final String consumerName = "poller-" + UUID.randomUUID();
 	private final StringRedisTemplate redisTemplate;
 	private final RedisStreamListener listener;
@@ -40,28 +43,40 @@ public class RedisStreamConfig {
 
 	@Bean
 	InitializingBean createGroupIfNotExists() {
-		return () -> {
-			try {
-				redisTemplate.opsForStream().createGroup(streamKey, groupName);
-			} catch (Exception ignore) {
-				// 이미 존재하는 경우 등은 무시
-			}
-		};
+		return this::ensureConsumerGroupExists;
 	}
 
-	@Scheduled(fixedDelay = 1000)
+	@Scheduled(fixedDelay = POLL_DELAY_MILLIS)
 	void pollStream() {
-		var records = redisTemplate.opsForStream().read(
-			Consumer.from(groupName, consumerName),
-			StreamReadOptions.empty().count(10).block(Duration.ofSeconds(1)),
-			StreamOffset.create(streamKey, ReadOffset.lastConsumed())
-		);
+		var records = readRecords();
 		if (records == null || records.isEmpty()) {
 			return;
 		}
-		records.forEach(record -> {
-			listener.onMessage(record);
-			redisTemplate.opsForStream().acknowledge(streamKey, groupName, record.getId());
-		});
+		records.forEach(this::handleRecord);
+	}
+
+	private void ensureConsumerGroupExists() {
+		try {
+			redisTemplate.opsForStream().createGroup(streamKey, GROUP_NAME);
+		} catch (Exception ignore) {
+			// 학습 환경에서는 이미 그룹이 있으면 그대로 진행한다.
+		}
+	}
+
+	private java.util.List<MapRecord<String, Object, Object>> readRecords() {
+		return redisTemplate.opsForStream().read(
+			Consumer.from(GROUP_NAME, consumerName),
+			StreamReadOptions.empty().count(READ_COUNT).block(BLOCK_TIMEOUT),
+			StreamOffset.create(streamKey, ReadOffset.lastConsumed())
+		);
+	}
+
+	private void handleRecord(MapRecord<String, Object, Object> record) {
+		listener.onMessage(record);
+		acknowledge(record);
+	}
+
+	private void acknowledge(MapRecord<String, Object, Object> record) {
+		redisTemplate.opsForStream().acknowledge(streamKey, GROUP_NAME, record.getId());
 	}
 }

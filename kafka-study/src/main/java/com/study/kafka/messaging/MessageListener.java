@@ -16,14 +16,24 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class MessageListener {
 
+	private static final String FAILURE_TRIGGER_KEYWORD = "fail";
+
 	@KafkaListener(topics = "${app.kafka.topic}", groupId = "${spring.kafka.consumer.group-id}")
 	public void listen(ConsumerRecord<String, MessagePayload> record, Acknowledgment ack) {
 		String message = record.value().message();
-		if (message != null && message.contains("fail")) {
+		throwIfMarkedToFail(message);
+		logConsumedRecord(record, message);
+		ack.acknowledge();
+	}
+
+	private void throwIfMarkedToFail(String message) {
+		if (message != null && message.contains(FAILURE_TRIGGER_KEYWORD)) {
 			throw new IllegalStateException("실패를 시뮬레이션한 메시지: " + message);
 		}
+	}
+
+	private void logConsumedRecord(ConsumerRecord<String, MessagePayload> record, String message) {
 		log.info("메시지 소비 완료: value={}, key={}, partition={}, offset={}",
 			message, record.key(), record.partition(), record.offset());
-		ack.acknowledge();
 	}
 }
