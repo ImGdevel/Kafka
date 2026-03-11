@@ -2,64 +2,65 @@
 
 [상위 설계 문서](../../docs/spec/tech/kafka-notification/README.md)
 
-## 목적
+## 1. 배경과 목표
 
-`notification-provider-sandbox`는 Worker가 사용할 실습용 채널 구현 모듈이다.  
-실제 Email/Slack 외부 연동 대신, 로컬에서 성공과 실패를 재현할 수 있는 가짜 Provider를 둔다.
+`notification-provider-sandbox`는 Worker 앱이 사용할 실습용 채널 구현 모듈이다.
 
-## 현재 포함 요소
+실제 Email, Slack API를 연동하지 않고도 성공과 실패 흐름을 재현할 수 있도록 가짜 Sender를 제공한다.
+
+## 2. 모듈 구조
+
+패키지:
+
+```text
+com.study.notification.provider.sandbox
+```
+
+포함 구현:
 
 - `SandboxEmailSender`
 - `SandboxSlackSender`
 
-현재 구현 상태:
+공통 규칙:
 
-- 스텁 수준
-- 실제 외부 API 호출 없음
-- 성공 반환 형태의 최소 골격만 존재
+- `NotificationSender` 구현
+- 정상 템플릿은 성공 반환
+- `templateCode=FAIL_ALWAYS`면 `IllegalStateException` 발생
 
-## 책임
+의존 경계:
 
-- 채널별 전송기 클래스 제공
-- Worker가 채널 선택 로직을 붙일 수 있는 진입점 제공
-- 이후 실패율, 지연, 부분 실패 규칙을 붙일 수 있는 실험 공간 제공
+- 허용: `notification-domain`
+- 금지: Kafka 토픽/헤더, REST API, 외부 비밀키
 
-## 예정 동작
+## 3. 런타임 흐름
 
-`SandboxEmailSender`
+1. Worker가 채널에 맞는 Sender bean을 선택한다.
+2. Sender가 `NotificationTarget`, `NotificationContent`, `NotificationTemplate`을 받는다.
+3. 실패 강제 규칙이 아니면 `NotificationSendResult`를 반환한다.
+4. 강제 실패 규칙이면 예외를 던져 Worker 재시도 흐름으로 넘긴다.
 
-- 성공 응답
-- 지정 비율 실패
-- 지정 시간 지연
+## 4. 설정 계약
 
-`SandboxSlackSender`
+현재 설정 키는 없다.
 
-- 성공 응답
-- 지정 비율 실패
-- 짧은 지연
+현재 구현된 실패 규칙:
 
-## 설정 계약 초안
+- `templateCode=FAIL_ALWAYS`
 
-```yaml
-app:
-  notification:
-    sandbox:
-      email:
-        failure-rate: 0.1
-        delay-millis: 150
-      slack:
-        failure-rate: 0.2
-        delay-millis: 50
-```
+후속 확장 후보:
 
-## 의존 규칙
+- 채널별 지연 시간
+- 확률 기반 실패율
+- 테스트용 세부 응답 코드
 
-- `notification-domain`에만 의존한다
-- Kafka 토픽/헤더 개념은 직접 알지 않는다
-- Producer 앱에서는 사용하지 않는다
+## 5. 확장 및 마이그레이션 전략
 
-## 리뷰 체크리스트
+- 실 Provider 연동이 필요해지면 별도 구현 모듈로 분리한다.
+- 실패 주입 정책이 많아지면 설정 기반 전략 클래스로 이동한다.
+- Sandbox 규칙은 도메인 모듈이나 contract 모듈로 올리지 않는다.
+
+## 6. 리뷰 체크리스트
 
 - 외부 API 키나 실 연동 코드가 들어가 있지 않은가
 - Worker 전용 모듈이라는 경계가 유지되는가
-- 실패 주입 규칙이 도메인 모듈에 새지 않는가
+- 실패 주입 규칙이 도메인에 새지 않는가

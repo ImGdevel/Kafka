@@ -1,0 +1,31 @@
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  application:
+    name: notification-producer-app
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-producer-query-group}
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.study.notification.contract,com.study.notification.domain
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    admin:
+      fail-fast: false
+    listener:
+      missing-topics-fatal: false
+
+app:
+  notification:
+    producer:
+      allowed-channels:
+        - EMAIL
+        - SLACK
+    query:
+      consumer-group: ${APP_NOTIFICATION_QUERY_CONSUMER_GROUP:notification-producer-query-group}

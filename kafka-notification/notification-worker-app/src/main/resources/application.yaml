@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: notification-worker-app
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-worker-group}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.study.notification.contract,com.study.notification.domain"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      missing-topics-fatal: false
+      concurrency: ${APP_NOTIFICATION_WORKER_CONCURRENCY:3}
+
+app:
+  notification:
+    retry:
+      max-attempts: ${APP_NOTIFICATION_RETRY_MAX_ATTEMPTS:2}
+      backoff-millis: ${APP_NOTIFICATION_RETRY_BACKOFF_MILLIS:1000}

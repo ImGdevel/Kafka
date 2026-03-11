@@ -18,7 +18,7 @@ services:
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
       - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
     volumes:
-      - kafka_data:/bitnami/kafka
+      - kafka_notification_data:/bitnami/kafka
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s
@@ -26,7 +26,6 @@ services:
       retries: 10
 
   notification-producer-app:
-    profiles: ["notification"]
     build:
       context: .
       dockerfile: docker/notification-app.Dockerfile
@@ -43,7 +42,6 @@ services:
     restart: on-failure
 
   notification-worker-app:
-    profiles: ["notification"]
     build:
       context: .
       dockerfile: docker/notification-app.Dockerfile
@@ -58,4 +56,4 @@ services:
     restart: on-failure
 
 volumes:
-  kafka_data:
+  kafka_notification_data:

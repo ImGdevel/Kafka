@@ -2,239 +2,177 @@
 
 ## 1. 배경과 목표
 
-`kafka-notification`은 Kafka를 사이에 두고 알림 요청과 실제 전송을 분리하는 실습용 부모 모듈이다.
+`kafka-notification`은 알림 요청 접수와 실제 전송을 Kafka로 분리해 보는 실습용 부모 모듈이다.
 
-이 모듈은 아래 흐름을 학습하는 데 목적이 있다.
+이번 단계에서 구현한 범위는 아래와 같다.
 
-- Producer 앱이 외부 요청을 받는다.
-- 요청을 Kafka 토픽에 적재한다.
-- Worker 앱이 토픽을 소비한다.
-- Worker가 채널별 Provider를 사용해 실제 전송을 수행한다.
-- 실패 시 재시도, 실패 이벤트, DLT 흐름을 실험한다.
-
-즉, 핵심은 `producer app + consumer(worker) app` 구조를 분리하고, 그 경계에 Kafka를 두는 것이다.
+- `notification-producer-app`이 `POST /api/notifications` 요청을 받는다.
+- `notification-producer-app`이 `GET /api/notifications/{notificationId}` 조회 API를 제공한다.
+- 요청을 `notification.requested` 토픽으로 발행한다.
+- `notification-worker-app`이 요청 이벤트를 소비한다.
+- Worker가 `SandboxEmailSender`, `SandboxSlackSender` 중 하나를 골라 전송을 수행한다.
+- 성공 시 `notification.sent`, 실패 시 1회 재시도 후 `notification.failed`를 발행한다.
+- Producer가 `notification.sent`, `notification.failed`를 소비해 조회 상태를 갱신한다.
+- `templateCode=FAIL_ALWAYS`로 실패 경로를 강제할 수 있다.
 
 현재 상태:
 
-- 구현 전
-- 상위 설계만 정의
+- 구현 완료
+- 로컬 실행 가능
+- Docker 실행 가능
+- 통합테스트 포함
 
-v1 범위:
+관련 모듈 문서:
 
-- 채널: `EMAIL`, `SLACK`
-- 앱: `notification-producer-app`, `notification-worker-app`
-- 모듈: `notification-domain`, `notification-contract`, `notification-provider-sandbox`
+- [notification-domain](../../../../kafka-notification/notification-domain/README.md)
+- [notification-contract](../../../../kafka-notification/notification-contract/README.md)
+- [notification-provider-sandbox](../../../../kafka-notification/notification-provider-sandbox/README.md)
+- [notification-producer-app](../../../../kafka-notification/notification-producer-app/README.md)
+- [notification-worker-app](../../../../kafka-notification/notification-worker-app/README.md)
 
 ## 2. 모듈 구조
 
-앱 모듈:
-
-- `kafka-notification:notification-producer-app`
-  - 외부 요청을 받는 Spring Boot 앱
-  - REST API 제공
-  - 알림 요청을 Kafka 토픽으로 발행
-  - 세부 문서: [notification-producer-app](../../../../kafka-notification/notification-producer-app/README.md)
-- `kafka-notification:notification-worker-app`
-  - Kafka consumer 역할의 Spring Boot 앱
-  - 알림 요청을 소비
-  - 채널별 전송, 재시도, 실패 이벤트 발행, DLT 처리를 담당
-  - 세부 문서: [notification-worker-app](../../../../kafka-notification/notification-worker-app/README.md)
-
-라이브러리 모듈:
+### 2.1 모듈 역할
 
 - `kafka-notification:notification-domain`
-  - 순수 도메인 모델과 전송 계약의 중심
+  - 순수 도메인 타입
   - `NotificationChannel`, `NotificationTarget`, `NotificationContent`, `NotificationTemplate`, `NotificationSendResult`, `NotificationSender`
-  - 세부 문서: [notification-domain](../../../../kafka-notification/notification-domain/README.md)
 - `kafka-notification:notification-contract`
-  - Producer와 Worker가 Kafka로 주고받는 메시지 계약
+  - Kafka 이벤트 DTO와 토픽/헤더 상수
   - `NotificationRequestedEvent`, `NotificationSentEvent`, `NotificationFailedEvent`
   - `NotificationTopics`, `NotificationHeaderNames`
-  - 세부 문서: [notification-contract](../../../../kafka-notification/notification-contract/README.md)
 - `kafka-notification:notification-provider-sandbox`
-  - 실습용 가짜 Provider 구현
+  - 실습용 Email/Slack Sender 구현
   - `SandboxEmailSender`, `SandboxSlackSender`
-  - 성공, 실패, 지연 시나리오를 강제로 재현
-  - 세부 문서: [notification-provider-sandbox](../../../../kafka-notification/notification-provider-sandbox/README.md)
+- `kafka-notification:notification-producer-app`
+  - HTTP 요청 수신
+  - 조회 API 제공
+  - 유효성 검증
+  - Kafka 발행
+  - 결과 상태 projection
+  - 토픽 생성
+- `kafka-notification:notification-worker-app`
+  - Kafka 소비
+  - 채널별 Sender 선택
+  - 재시도
+  - 성공/실패 이벤트 발행
 
-중요한 점:
-
-- `notification-producer-app`와 `notification-worker-app`는 서로 독립적으로 실행되는 앱이다.
-- `notification-domain`, `notification-contract`, `notification-provider-sandbox`는 독립 실행 앱이 아니다.
-- 앱 모듈이 라이브러리 모듈을 가져다 쓰는 구조가 맞다.
-
-권장 의존 구조:
+### 2.2 의존 방향
 
 ```mermaid
 flowchart LR
-    producer["notification-producer-app"] --> domain["notification-domain"]
-    producer --> contract["notification-contract"]
-    worker["notification-worker-app"] --> domain
-    worker --> contract
-    worker --> sandbox["notification-provider-sandbox"]
+    producer["notification-producer-app
+com.study.notification.producer"] --> contract["notification-contract
+com.study.notification.contract"]
+    producer --> domain["notification-domain
+com.study.notification.domain"]
+    producer --> projection["NotificationQueryService"]
+    producer --> topicConfig["NotificationKafkaTopicConfig"]
+
+    worker["notification-worker-app
+com.study.notification.worker"] --> contract
+    worker --> domain
+    worker --> sandbox["notification-provider-sandbox
+com.study.notification.provider.sandbox"]
+
     sandbox --> domain
 ```
 
-## 3. 왜 app이 2개여야 하는가
+### 2.3 주요 클래스 배치
 
-Kafka 실습이라면 보통 `producer`와 `consumer`를 프로세스 수준에서 나누는 편이 더 낫다.
+- Producer 앱
+  - `NotificationController`
+  - `NotificationProducerService`
+  - `NotificationResultListener`
+  - `NotificationQueryService`
+  - `NotificationKafkaTopicConfig`
+  - `NotificationProducerProperties`
+- Worker 앱
+  - `NotificationRequestedListener`
+  - `NotificationWorkerService`
+  - `NotificationWorkerConfig`
+- Sandbox Provider
+  - `SandboxEmailSender`
+  - `SandboxSlackSender`
 
-이유:
+## 3. 런타임 흐름
 
-- 실무 구조와 더 비슷하다.
-- API 처리와 실제 전송 처리의 생명주기를 분리할 수 있다.
-- Worker 수를 늘리거나 줄이는 실험이 쉽다.
-- 재시도, DLT, consumer group, lag 같은 Kafka 학습 포인트가 살아난다.
-- 알림 전송 실패가 API 응답 시간을 직접 오염시키지 않는다.
-
-반대로 앱 하나로 합치면:
-
-- 구조는 단순하지만 Kafka를 쓰는 이유가 약해진다.
-- producer/consumer 분리 학습이 약해진다.
-- 워커 확장, 재처리, 장애 격리 실험이 제한된다.
-
-따라서 이 실습에서는 앱을 아래처럼 나누는 편이 맞다.
-
-1. `notification-producer-app`
-2. `notification-worker-app`
-
-## 4. 런타임 흐름
-
-핵심 흐름은 다음과 같다.
-
-1. 사용자가 Producer API에 알림 요청을 보낸다.
-2. Producer 앱이 요청을 검증하고 `notification.requested` 토픽에 발행한다.
-3. Worker 앱이 해당 토픽을 소비한다.
-4. Worker는 채널과 내용을 해석한 뒤 적절한 Provider를 선택한다.
-5. 전송 성공 시 `notification.sent` 이벤트를 발행한다.
-6. 전송 실패 시 1회 재시도 후 `notification.failed` 이벤트를 발행한다.
-7. 필요 시 broker DLT를 사용한다.
+### 3.1 성공 경로
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Producer as notification-producer-app
-    participant Requested as notification.requested
-    participant Worker as notification-worker-app
-    participant Provider as notification-provider-sandbox
-    participant Failed as notification.failed
+    participant Producer as NotificationController
+    participant ProducerService as NotificationProducerService
+    participant Query as NotificationQueryService
+    participant Kafka as notification.requested
+    participant Listener as NotificationRequestedListener
+    participant Worker as NotificationWorkerService
+    participant Sender as SandboxEmailSender/SandboxSlackSender
+    participant Sent as notification.sent
 
     Client->>Producer: POST /api/notifications
-    Producer->>Requested: publish(NotificationRequestedEvent)
-    Requested-->>Worker: consume(NotificationRequestedEvent)
-    Worker->>Provider: send(channel, target, content)
-    Provider-->>Worker: success or failure
-    alt success
-        Worker->>Requested: no-op
-        Worker->>Failed: skip
-    else retry exhausted
-        Worker->>Failed: publish(NotificationFailedEvent)
-    end
+    Producer->>ProducerService: accept(request)
+    ProducerService->>Query: ACCEPTED 상태 기록
+    ProducerService->>Kafka: NotificationRequestedEvent + headers
+    Kafka-->>Listener: NotificationRequestedEvent
+    Listener->>Worker: handle(event)
+    Worker->>Sender: send(target, content, template)
+    Sender-->>Worker: NotificationSendResult
+    Worker->>Sent: NotificationSentEvent
+    Sent-->>Query: SENT 상태 반영
 ```
 
-권장 토픽:
+### 3.2 실패 경로
 
-- `notification.requested`
-- `notification.sent`
-- `notification.failed`
-- `notification.requested.dlt`
+```mermaid
+sequenceDiagram
+    participant Producer as NotificationProducerService
+    participant Query as NotificationQueryService
+    participant Kafka as notification.requested
+    participant Worker as NotificationWorkerService
+    participant Sender as SandboxEmailSender/SandboxSlackSender
+    participant Failed as notification.failed
 
-## 5. 모듈별 책임
-
-### `notification-producer-app`
-
-책임:
-
-- HTTP 요청 수신
-- 요청 검증
-- Kafka 발행
-- 추적 ID 생성
-
-하지 않을 일:
-
-- 실제 Email/Slack 전송
-- 재시도 정책 처리
-- DLT 처리
-
-### `notification-worker-app`
-
-책임:
-
-- Kafka 메시지 소비
-- 채널별 Provider 선택
-- 전송 시도
-- 성공/실패 이벤트 발행
-- 재시도와 DLT 정책 수행
-
-하지 않을 일:
-
-- 외부 사용자용 API 제공
-
-### `notification-domain`
-
-책임:
-
-- 순수 도메인 타입
-- 채널, 수신자, 내용, 템플릿, 결과 모델
-- Provider 구현이 따라야 하는 인터페이스
-
-규칙:
-
-- Spring, Kafka, Web 의존성을 두지 않는다.
-- 비즈니스 개념만 담고 메시징 세부 구현은 넣지 않는다.
-
-### `notification-contract`
-
-책임:
-
-- Kafka 메시지 계약
-- 토픽 이름과 헤더 이름
-- Producer와 Worker가 공유하는 이벤트 DTO
-
-규칙:
-
-- 이벤트는 전송용 DTO로만 유지한다.
-- 도메인 정책과 Provider 구현은 넣지 않는다.
-
-### `notification-provider-sandbox`
-
-책임:
-
-- 실습용 Email/Slack Sender 구현
-- 성공, 실패, 지연 패턴 재현
-
-규칙:
-
-- 외부 API 키나 실 연동 코드를 넣지 않는다.
-- Worker 앱에서만 사용한다.
-
-## 6. 설정 계약
-
-권장 설정 키:
-
-```yaml
-app:
-  notification:
-    topic:
-      requested: notification.requested
-      sent: notification.sent
-      failed: notification.failed
-      dlt: notification.requested.dlt
-    retry:
-      max-attempts: 2
-      backoff-millis: 1000
-    sandbox:
-      email:
-        failure-rate: 0.1
-        delay-millis: 150
-      slack:
-        failure-rate: 0.2
-        delay-millis: 50
+    Producer->>Query: ACCEPTED 상태 기록
+    Producer->>Kafka: NotificationRequestedEvent(templateCode=FAIL_ALWAYS)
+    Kafka-->>Worker: consume
+    Worker->>Sender: 1차 시도
+    Sender-->>Worker: IllegalStateException
+    Worker->>Sender: 2차 시도
+    Sender-->>Worker: IllegalStateException
+    Worker->>Failed: NotificationFailedEvent
+    Failed-->>Query: FAILED 상태 반영
 ```
 
-Producer 쪽 추가 설정:
+### 3.3 토픽 흐름
+
+- 요청 토픽: `notification.requested`
+- 성공 토픽: `notification.sent`
+- 실패 토픽: `notification.failed`
+- 보류 토픽: `notification.requested.dlt`
+
+현재 구현 상태:
+
+- `notification.requested.dlt` 토픽은 생성만 한다.
+- broker DLT 소비 로직은 아직 없다.
+- 실패 처리는 Worker 내부 재시도 + `notification.failed` 발행으로 고정한다.
+- 조회 API는 Producer의 in-memory projection을 사용하므로 재기동 시 상태가 초기화된다.
+
+## 4. 설정 계약
+
+### 4.1 Producer 앱
 
 ```yaml
+server:
+  port: ${SERVER_PORT:8082}
+
+spring:
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-producer-query-group}
+
 app:
   notification:
     producer:
@@ -243,43 +181,105 @@ app:
         - SLACK
 ```
 
-Worker 쪽 추가 설정:
+Producer API:
+
+- `POST /api/notifications`
+- `GET /api/notifications/{notificationId}`
+
+### 4.2 Worker 앱
 
 ```yaml
+spring:
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-worker-group
+
 app:
   notification:
-    worker:
-      concurrency: 3
-      retry-on-failure: true
+    retry:
+      max-attempts: ${APP_NOTIFICATION_RETRY_MAX_ATTEMPTS:2}
+      backoff-millis: ${APP_NOTIFICATION_RETRY_BACKOFF_MILLIS:1000}
 ```
 
-## 7. 시작 순서
+### 4.3 Docker 실행 경로
 
-가장 빠른 시작 순서는 이렇다.
+루트 compose profile:
 
-1. `notification-domain`
-2. `notification-contract`
-3. `notification-producer-app`
-4. `notification-provider-sandbox`
-5. `notification-worker-app`
-
-이 순서를 택하면 Producer와 Worker를 빨리 분리해볼 수 있고, Kafka 실습 포인트도 초반부터 살아난다.
-
-## 8. 리뷰 체크리스트
-
-- Producer가 실제 전송 책임을 들고 있지 않은가
-- Worker가 HTTP API 책임까지 같이 들고 있지 않은가
-- 도메인 타입이 contract 모듈에 섞여 있지 않은가
-- Kafka 토픽/헤더 계약이 contract 모듈로 모여 있는가
-- Provider 구현이 domain에 섞여 있지 않은가
-- `EMAIL`, `SLACK` 외 채널이 v1 범위에 섞여 있지 않은가
-
-## 부록. settings.gradle 제안안
-
-```gradle
-include 'kafka-notification:notification-domain'
-include 'kafka-notification:notification-contract'
-include 'kafka-notification:notification-provider-sandbox'
-include 'kafka-notification:notification-producer-app'
-include 'kafka-notification:notification-worker-app'
+```bash
+docker compose --profile notification up --build -d
 ```
+
+전용 compose:
+
+```bash
+docker compose -f docker-compose.notification.yml up --build -d
+```
+
+Docker 내부/외부 Kafka 연결 규칙:
+
+- 호스트 앱 -> `localhost:9092`
+- 컨테이너 앱 -> `kafka:29092`
+
+## 5. 확장 및 마이그레이션 전략
+
+### 5.1 다음 확장 후보
+
+- `notification-worker-app`에 broker DLT 소비 추가
+- 조회 상태 영속 저장소 추가
+- 실 Provider 연동 모듈 추가
+- 템플릿 렌더링 계층 추가
+- `notification-provider-sandbox`에 지연/확률 기반 실패 설정 추가
+
+### 5.2 채널 추가 기준
+
+새 채널을 추가할 때는 아래 순서를 따른다.
+
+1. `notification-domain`의 `NotificationChannel` 확장
+2. `notification-provider-sandbox` 또는 실제 Provider 모듈에 `NotificationSender` 구현 추가
+3. `notification-worker-app`에서 Sender bean 등록 확인
+4. API 문서와 테스트 업데이트
+
+### 5.3 DLT 전략
+
+현재:
+
+- Worker 내부 재시도 1회
+- 실패 이벤트 발행
+
+후속 단계:
+
+- Kafka `DefaultErrorHandler`
+- `notification.requested.dlt` 소비 앱 또는 관리자 앱
+- 수동 재처리 시나리오
+
+## 6. 검증 결과
+
+검증 명령:
+
+```bash
+./gradlew :kafka-notification:notification-producer-app:test
+./gradlew :kafka-notification:notification-worker-app:test
+./gradlew build
+./gradlew projects
+docker compose --profile notification up --build -d
+docker compose -f docker-compose.notification.yml up --build -d
+```
+
+검증 포인트:
+
+- Producer API 호출 시 `notification.requested` 이벤트 발행
+- Worker 성공 시 `notification.sent` 발행
+- `templateCode=FAIL_ALWAYS` 시 2회 시도 후 `notification.failed` 발행
+- Producer 조회 API가 `ACCEPTED`, `SENT`, `FAILED` 상태를 노출하는지 확인
+- Docker에서 producer/worker가 같은 Kafka를 바라보는지 확인
+
+## 7. 리뷰 체크리스트
+
+- Producer가 실제 전송 책임을 가지지 않는가
+- Worker가 HTTP 엔드포인트를 노출하지 않는가
+- 조회 API가 결과 토픽 상태와 일관되게 갱신되는가
+- 토픽 이름과 헤더 이름이 `notification-contract` 상수와 일치하는가
+- `FAIL_ALWAYS` 규칙이 문서와 코드에서 동일한가
+- Docker 내부 Kafka 주소가 `kafka:29092`로 맞춰져 있는가
+- `notification.requested.dlt`가 구현 범위 밖이라는 점이 문서에 명확한가
