@@ -28,13 +28,18 @@ public class NotificationQueryService {
 
 	private final NotificationRequestRepository requestRepository;
 
-	// Pillar 1 개선: transaction-id-prefix 추가로 KafkaTransactionManager가 생성되어
-	// @Transactional만 사용하면 NoUniqueBeanDefinitionException 발생 → JPA TM 명시 필수.
 	@Transactional("transactionManager")
 	public void markSent(NotificationSentEvent event) {
 		requestRepository.findById(event.notificationId())
 			.ifPresentOrElse(
 				entity -> {
+					// 개선 2: at-least-once 소비로 인한 재전달 시 멱등 처리.
+					// ACCEPTED 상태일 때만 갱신하여 불필요한 중복 UPDATE를 방지한다.
+					if (!"ACCEPTED".equals(entity.getStatus())) {
+						log.debug("SENT 갱신 스킵: 이미 최종 상태 (notificationId={}, status={})",
+							event.notificationId(), entity.getStatus());
+						return;
+					}
 					entity.markSent(event.provider());
 					log.info("알림 상태 갱신 → SENT: notificationId={}, provider={}", event.notificationId(), event.provider());
 				},
@@ -47,6 +52,13 @@ public class NotificationQueryService {
 		requestRepository.findById(event.notificationId())
 			.ifPresentOrElse(
 				entity -> {
+					// 개선 2: at-least-once 소비로 인한 재전달 시 멱등 처리.
+					// ACCEPTED 상태일 때만 갱신하여 불필요한 중복 UPDATE를 방지한다.
+					if (!"ACCEPTED".equals(entity.getStatus())) {
+						log.debug("FAILED 갱신 스킵: 이미 최종 상태 (notificationId={}, status={})",
+							event.notificationId(), entity.getStatus());
+						return;
+					}
 					entity.markFailed(event.reason());
 					log.info("알림 상태 갱신 → FAILED: notificationId={}, reason={}", event.notificationId(), event.reason());
 				},
