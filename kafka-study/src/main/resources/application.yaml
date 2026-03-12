@@ -2,7 +2,8 @@ spring:
   application:
     name: kafka
   kafka:
-    bootstrap-servers: localhost:9092
+    # 학습 포인트: 3개 브로커 모두 등록 → 1개 다운 시에도 bootstrap 성공
+    bootstrap-servers: localhost:9092,localhost:9094,localhost:9095
     consumer:
       group-id: study-group
       auto-offset-reset: earliest
