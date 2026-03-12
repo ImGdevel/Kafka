@@ -1,0 +1,46 @@
+<mxfile host="app.diagrams.net" modified="2026-03-12T12:00:00.000Z" agent="draw.io" version="24.7.17">
+  <diagram id="phase1" name="phase-1-architecture">
+    <mxGraphModel dx="1280" dy="720" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="client" value="Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="210" width="120" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="producer" value="notification-producer-app&#xa;HTTP API + 상태 조회" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="220" y="180" width="210" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="requested" value="notification.requested" style="shape=process;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="500" y="120" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="result" value="notification.sent&#xa;notification.failed" style="shape=process;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="500" y="280" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="worker" value="notification-worker-app&#xa;소비 + 재시도 + 결과 발행" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="780" y="180" width="220" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="sandbox" value="notification-provider-sandbox&#xa;Email / Slack Sender" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="180" width="220" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="client" target="producer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="요청 발행" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="producer" target="requested">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="요청 소비" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="requested" target="worker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="전송 호출" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="worker" target="sandbox">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="성공/실패 이벤트" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="worker" target="result">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" value="조회 상태 반영" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="result" target="producer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

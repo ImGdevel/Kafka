@@ -22,6 +22,14 @@
 - Docker 실행 가능
 - 통합테스트 포함
 
+단계별 문서:
+
+| 단계 | 상태 | 설계 문서 | 아키텍처 문서 | draw.io XML |
+|---|---|---|---|---|
+| 1단계 | 완료 | [1단계 설계](./phase-1-design.md) | [1단계 아키텍처](./phase-1-architecture.md) | [phase-1 XML](./phase-1-architecture.drawio) |
+| 2단계 | 예정 | - | - | - |
+| 3단계 | 예정 | - | - | - |
+
 관련 모듈 문서:
 
 - [notification-domain](../../../../kafka-notification/notification-domain/README.md)
