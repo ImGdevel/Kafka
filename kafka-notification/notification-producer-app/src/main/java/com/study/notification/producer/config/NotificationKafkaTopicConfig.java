@@ -13,8 +13,12 @@ import com.study.notification.contract.NotificationTopics;
 @Configuration
 public class NotificationKafkaTopicConfig {
 
-	private static final int PARTITION_COUNT = 1;
-	private static final int REPLICA_COUNT = 1;
+	// 학습 포인트: 파티션 3개 → notification.requested 처리량 병렬화.
+	//   순서 보장: notificationId를 key로 전송하므로 동일 알림은 항상 같은 파티션에 배정됨.
+	private static final int PARTITION_COUNT = 3;
+	// 학습 포인트: RF=3 → 브로커 1개 장애 시에도 notification 메시지 유실 없음
+	private static final int REPLICA_COUNT = 3;
+	private static final int MIN_ISR = 2;
 
 	@Bean
 	public NewTopic notificationRequestedTopic() {
@@ -40,6 +44,7 @@ public class NotificationKafkaTopicConfig {
 		return TopicBuilder.name(topicName)
 			.partitions(PARTITION_COUNT)
 			.replicas(REPLICA_COUNT)
+			.config("min.insync.replicas", String.valueOf(MIN_ISR))
 			.build();
 	}
 }

@@ -12,7 +12,7 @@ spring:
   flyway:
     enabled: true
   kafka:
-    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9094,localhost:9095}
     consumer:
       group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-worker-group}
       auto-offset-reset: earliest
@@ -20,6 +20,9 @@ spring:
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # 학습 포인트: CooperativeStickyAssignor — 이동 필요한 파티션만 점진 재할당 (Stop-The-World 없음)
+      # 기본값 RangeAssignor(Eager)는 리밸런싱 시 모든 파티션 반납 후 재할당 → 소비 전체 중단
+      partition-assignment-strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
       properties:
         spring.json.trusted.packages: "com.study.notification.contract,com.study.notification.domain"
         # Pillar 2: Producer TX 커밋된 메시지만 소비 (read_committed isolation)

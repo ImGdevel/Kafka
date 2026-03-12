@@ -30,6 +30,11 @@
 | 2단계 | 완료 | [2단계 설계](./phase-2-design.md) | [2단계 아키텍처](./phase-2-architecture.md) | [phase-2 XML](./phase-2-architecture.drawio) |
 | 3단계 | 완료 | [3단계 설계](./phase-3-design.md) | [3단계 아키텍처](./phase-3-architecture.md) | [phase-3 XML](./phase-3-architecture.drawio) |
 
+클러스터링 문서:
+
+- [Kafka 클러스터링 설계](../../kafka-clustering.md) — 3-브로커 KRaft 구성, ISR, 리더 선출, 순서 보장
+- [ZooKeeper vs KRaft](../../kafka-zookeeper-vs-kraft.md) — 역할, 이벤트 영속성, 차이점
+
 EOS 개선 이력:
 
 | # | Pillar | 개선 내용 |
@@ -187,7 +192,8 @@ server:
 
 spring:
   kafka:
-    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # 3-브로커 클러스터: 1개 다운 시에도 bootstrap 성공
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9094,localhost:9095}
     consumer:
       group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-producer-query-group}
 
@@ -209,9 +215,11 @@ Producer API:
 ```yaml
 spring:
   kafka:
-    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9094,localhost:9095}
     consumer:
       group-id: notification-worker-group
+    listener:
+      concurrency: 3  # 파티션 수(3)와 일치 → 파티션당 1 스레드 최적 배정
 
 app:
   notification:
@@ -220,7 +228,16 @@ app:
       backoff-millis: ${APP_NOTIFICATION_RETRY_BACKOFF_MILLIS:1000}
 ```
 
-### 4.3 Docker 실행 경로
+### 4.3 토픽 설정 (클러스터 기준)
+
+| 토픽 | 파티션 | RF | min.insync.replicas |
+|---|---|---|---|
+| `notification.requested` | 3 | 3 | 2 |
+| `notification.sent` | 3 | 3 | 2 |
+| `notification.failed` | 3 | 3 | 2 |
+| `notification.requested.dlt` | 3 | 3 | 2 |
+
+### 4.4 Docker 실행 경로
 
 루트 compose profile:
 
@@ -228,16 +245,12 @@ app:
 docker compose --profile notification up --build -d
 ```
 
-전용 compose:
-
-```bash
-docker compose -f docker-compose.notification.yml up --build -d
-```
-
 Docker 내부/외부 Kafka 연결 규칙:
 
-- 호스트 앱 -> `localhost:9092`
-- 컨테이너 앱 -> `kafka:29092`
+| 환경 | bootstrap-servers |
+|---|---|
+| 호스트 앱 | `localhost:9092,localhost:9094,localhost:9095` |
+| Docker 내부 앱 | `kafka-1:29092,kafka-2:29092,kafka-3:29092` |
 
 ## 5. 확장 및 마이그레이션 전략
 
@@ -299,5 +312,7 @@ docker compose -f docker-compose.notification.yml up --build -d
 - 조회 API가 결과 토픽 상태와 일관되게 갱신되는가
 - 토픽 이름과 헤더 이름이 `notification-contract` 상수와 일치하는가
 - `FAIL_ALWAYS` 규칙이 문서와 코드에서 동일한가
-- Docker 내부 Kafka 주소가 `kafka:29092`로 맞춰져 있는가
+- Docker 내부 Kafka 주소가 `kafka-1:29092,kafka-2:29092,kafka-3:29092`로 맞춰져 있는가
 - `notification.requested.dlt`가 구현 범위 밖이라는 점이 문서에 명확한가
+- 클러스터 환경에서 bootstrap-servers가 3개 주소를 모두 포함하는가
+- notification 토픽이 RF=3, min.insync.replicas=2로 생성되는가

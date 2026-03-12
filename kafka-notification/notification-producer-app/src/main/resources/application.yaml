@@ -15,7 +15,7 @@ spring:
   flyway:
     enabled: true
   kafka:
-    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9094,localhost:9095}
     consumer:
       group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-producer-query-group}
       auto-offset-reset: latest
