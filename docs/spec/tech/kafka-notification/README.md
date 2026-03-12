@@ -28,7 +28,7 @@
 |---|---|---|---|---|
 | 1단계 | 완료 | [1단계 설계](./phase-1-design.md) | [1단계 아키텍처](./phase-1-architecture.md) | [phase-1 XML](./phase-1-architecture.drawio) |
 | 2단계 | 완료 | [2단계 설계](./phase-2-design.md) | [2단계 아키텍처](./phase-2-architecture.md) | [phase-2 XML](./phase-2-architecture.drawio) |
-| 3단계 | 예정 | - | - | - |
+| 3단계 | 완료 | [3단계 설계](./phase-3-design.md) | [3단계 아키텍처](./phase-3-architecture.md) | [phase-3 XML](./phase-3-architecture.drawio) |
 
 EOS 개선 이력:
 
