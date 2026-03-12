@@ -42,7 +42,20 @@ import com.study.notification.producer.web.NotificationStatusResponse;
 		"spring.kafka.consumer.auto-offset-reset=earliest",
 		"spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer",
 		"spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer",
-		"spring.kafka.consumer.properties.spring.json.trusted.packages=com.study.notification.contract,com.study.notification.domain"
+		"spring.kafka.consumer.properties.spring.json.trusted.packages=com.study.notification.contract,com.study.notification.domain",
+		// 테스트용 H2 인메모리 DB
+		"spring.datasource.url=jdbc:h2:mem:producer-test;DB_CLOSE_DELAY=-1",
+		"spring.datasource.driver-class-name=org.h2.Driver",
+		"spring.datasource.username=sa",
+		"spring.datasource.password=",
+		"spring.jpa.hibernate.ddl-auto=create-drop",
+		"spring.flyway.enabled=false",
+		// OutboxRelay를 빠르게 실행하여 테스트 속도 개선
+		"app.notification.outbox.poll-interval-ms=100",
+		// 프로듀서 멱등성 비활성화 (EmbeddedKafka 단순 설정)
+		"spring.kafka.producer.properties.enable.idempotence=false",
+		"spring.kafka.producer.acks=1",
+		"spring.kafka.producer.retries=0"
 	}
 )
 @AutoConfigureMockMvc
@@ -69,7 +82,7 @@ class NotificationProducerApplicationTests {
 	private ObjectMapper objectMapper;
 
 	@Test
-	@DisplayName("알림 요청 API를 호출하면 notification.requested 이벤트를 발행한다.")
+	@DisplayName("알림 요청 API를 호출하면 OutboxRelay가 notification.requested 이벤트를 발행한다.")
 	void postNotificationPublishesRequestedEvent() throws Exception {
 		requestedEventCapture.reset();
 
@@ -89,6 +102,7 @@ class NotificationProducerApplicationTests {
 			.andExpect(jsonPath("$.traceId").isNotEmpty())
 			.andExpect(jsonPath("$.status").value("ACCEPTED"));
 
+		// OutboxRelay가 비동기로 발행하므로 이벤트 수신을 대기
 		NotificationRequestedEvent event = requestedEventCapture.await();
 		assertThat(event).isNotNull();
 		assertThat(event.channel().name()).isEqualTo("EMAIL");
