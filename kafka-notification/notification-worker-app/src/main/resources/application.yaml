@@ -1,21 +1,44 @@
 spring:
   application:
     name: notification-worker-app
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/notification_worker}
+    username: ${SPRING_DATASOURCE_USERNAME:notification}
+    password: ${SPRING_DATASOURCE_PASSWORD:notification}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:notification-worker-group}
       auto-offset-reset: earliest
+      # Pillar 2: MANUAL ack — 오프셋은 처리 완료 후 코드에서 명시 커밋
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "com.study.notification.contract,com.study.notification.domain"
+        # Pillar 2: Producer TX 커밋된 메시지만 소비 (read_committed isolation)
+        isolation.level: read_committed
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Pillar 2: Kafka TX — consume + produce + offset commit을 원자적으로 처리
+      transaction-id-prefix: notification-worker-tx-
+      # Pillar 5: 프로듀서 멱등성
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
     listener:
       missing-topics-fatal: false
       concurrency: ${APP_NOTIFICATION_WORKER_CONCURRENCY:3}
+      # Pillar 2: MANUAL ack 모드 — ack.acknowledge() 호출 시 sendOffsetsToTransaction() 후 TX 커밋
+      ack-mode: MANUAL
 
 app:
   notification:
