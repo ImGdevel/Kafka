@@ -97,20 +97,48 @@ KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
 
 ### 4.2 메시지 순서 보장 문제 (멀티 파티션)
 
-**문제**: 파티션이 3개이면 동일 메시지 타입이 서로 다른 파티션에 분산되어 소비 순서가 비결정적이다.
-
-**해결**: key 기반 파티셔닝으로 동일 key → 동일 파티션 보장
+**원칙**: Kafka는 파티션 내 순서만 보장한다. 전역(토픽 레벨) 순서는 보장하지 않는다.
 
 ```
-파티션 내 오프셋 순서는 항상 보장됨
-  kafka-study: KafkaMessagePublisher.publish(topic, key, payload)
-    → key 존재 시 동일 key는 동일 파티션에 배정
-  kafka-notification: OutboxRelay.relay()
-    → notificationId를 key로 전송
-    → 동일 알림의 이벤트는 항상 같은 파티션
+파티션 0: msg-A → msg-D   (이 순서는 보장)
+파티션 1: msg-B → msg-E   (이 순서는 보장)
+파티션 2: msg-C → msg-F   (이 순서는 보장)
+컨슈머 소비: A, B, C, D, E, F ... (비결정적)
 ```
 
-> **전역 순서는 보장하지 않는다.** 전역 순서가 필요하다면 파티션 수를 1로 줄여야 한다.
+**전략**: `notificationId`(엔티티 ID)를 key로 사용 → 동일 key → 동일 파티션 → 파티션 내 순서 보장
+
+#### 현재 구현 확인
+
+| 발행 지점 | 코드 | key |
+|---|---|---|
+| `OutboxRelay.relay()` | `ops.send(topic, outbox.getNotificationId(), event)` | `notificationId` |
+| `NotificationWorkerService` (성공) | `kafkaTemplate.send(SENT, event.notificationId(), ...)` | `notificationId` |
+| `NotificationWorkerService` (실패) | `kafkaTemplate.send(FAILED, event.notificationId(), ...)` | `notificationId` |
+
+모든 발행 지점에서 `notificationId`를 key로 사용하므로 **동일 알림의 이벤트는 항상 같은 파티션**에 배정된다.
+
+#### 보장되는 것과 보장되지 않는 것
+
+**보장됨**: 동일 `notificationId`로 발행된 메시지(예: Outbox 재처리 시 재발행)는 같은 파티션 → 같은 컨슈머 스레드가 오프셋 순서대로 소비
+
+```
+notification.requested 파티션 1:
+  REQUESTED(notificationId=AAA, seq=1)
+  REQUESTED(notificationId=AAA, seq=2, 재발행)  ← Outbox 재시도
+  → 같은 파티션이므로 seq 순서 보장
+  → Pillar 3 멱등 게이트가 seq=2를 스킵
+```
+
+**보장 불필요**: `REQUESTED → SENT`는 서로 다른 토픽이므로 파티션 순서 문제가 아님.
+Worker가 REQUESTED를 소비한 후에만 SENT를 발행하므로 비즈니스 흐름 자체가 순서를 보장.
+
+#### 순서 보장이 깨지는 경우
+
+- key 없이 발행(라운드로빈) → 동일 엔티티 이벤트가 다른 파티션에 배정 → 순서 보장 불가
+- 같은 파티션이라도 컨슈머가 `concurrency > 파티션 수`이면 같은 파티션에 복수 스레드가 붙을 수 있음 → 현재 `concurrency=3 = 파티션 수`이므로 안전
+
+> **전역 순서가 필요한 경우**: 파티션 수를 1로 줄여야 한다. 단, 처리량(throughput)을 희생한다.
 
 ### 4.3 컨슈머 그룹 리밸런싱
 
