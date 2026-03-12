@@ -1,52 +1,64 @@
 package com.study.notification.producer.service;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.study.notification.contract.NotificationFailedEvent;
-import com.study.notification.contract.NotificationRequestedEvent;
 import com.study.notification.contract.NotificationSentEvent;
+import com.study.notification.producer.persistence.NotificationRequestEntity;
+import com.study.notification.producer.persistence.NotificationRequestRepository;
 import com.study.notification.producer.web.NotificationStatusResponse;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 /**
- * 알림 상태를 메모리에 projection 하여 조회 API에 제공한다.
+ * 알림 상태를 DB에서 조회 · 갱신하는 서비스.
+ *
+ * <p>기존 in-memory ConcurrentHashMap을 notification_requests 테이블로 대체한다.
+ * Worker가 처리 결과를 notification.sent / notification.failed 토픽에 발행하면
+ * NotificationResultListener가 해당 메서드를 호출하여 상태를 갱신한다.
  */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class NotificationQueryService {
 
-	private final Map<String, NotificationQuerySnapshot> snapshots = new ConcurrentHashMap<>();
+	private final NotificationRequestRepository requestRepository;
 
-	public void registerAccepted(NotificationRequestedEvent event) {
-		snapshots.put(event.notificationId(), NotificationQuerySnapshot.accepted(event));
-	}
-
+	@Transactional
 	public void markSent(NotificationSentEvent event) {
-		snapshots.compute(
-			event.notificationId(),
-			(notificationId, current) -> current == null
-				? NotificationQuerySnapshot.sentOnly(event)
-				: current.markSent(event.provider())
-		);
+		requestRepository.findById(event.notificationId())
+			.ifPresentOrElse(
+				entity -> {
+					entity.markSent(event.provider());
+					log.info("알림 상태 갱신 → SENT: notificationId={}, provider={}", event.notificationId(), event.provider());
+				},
+				() -> log.warn("SENT 갱신 대상 없음 (notificationId={}): 이미 처리됐거나 존재하지 않는 알림입니다.", event.notificationId())
+			);
 	}
 
+	@Transactional
 	public void markFailed(NotificationFailedEvent event) {
-		snapshots.compute(
-			event.notificationId(),
-			(notificationId, current) -> current == null
-				? NotificationQuerySnapshot.failedOnly(event)
-				: current.markFailed(event.reason())
-		);
+		requestRepository.findById(event.notificationId())
+			.ifPresentOrElse(
+				entity -> {
+					entity.markFailed(event.reason());
+					log.info("알림 상태 갱신 → FAILED: notificationId={}, reason={}", event.notificationId(), event.reason());
+				},
+				() -> log.warn("FAILED 갱신 대상 없음 (notificationId={}): 이미 처리됐거나 존재하지 않는 알림입니다.", event.notificationId())
+			);
 	}
 
+	@Transactional(readOnly = true)
 	public NotificationStatusResponse get(String notificationId) {
-		NotificationQuerySnapshot snapshot = snapshots.get(notificationId);
-		if (snapshot == null) {
-			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "알림 조회 결과가 없습니다: " + notificationId);
-		}
-		return NotificationStatusResponse.from(snapshot);
+		NotificationRequestEntity entity = requestRepository.findById(notificationId)
+			.orElseThrow(() -> new ResponseStatusException(
+				HttpStatus.NOT_FOUND,
+				"알림 조회 결과가 없습니다: " + notificationId
+			));
+		return NotificationStatusResponse.from(entity);
 	}
 }

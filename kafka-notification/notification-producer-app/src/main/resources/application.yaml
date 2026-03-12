@@ -4,6 +4,16 @@ server:
 spring:
   application:
     name: notification-producer-app
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/notification_producer}
+    username: ${SPRING_DATASOURCE_USERNAME:notification}
+    password: ${SPRING_DATASOURCE_PASSWORD:notification}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -13,9 +23,17 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: com.study.notification.contract,com.study.notification.domain
+        # Pillar 5: sent/failed 이벤트는 Worker TX 커밋 이후에만 읽는다
+        isolation.level: read_committed
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Pillar 5: 프로듀서 멱등성 — 브로커가 중복 배치를 탐지하여 정확히 1회 기록한다
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
     admin:
       fail-fast: false
     listener:
@@ -29,3 +47,6 @@ app:
         - SLACK
     query:
       consumer-group: ${APP_NOTIFICATION_QUERY_CONSUMER_GROUP:notification-producer-query-group}
+    outbox:
+      poll-interval-ms: ${APP_NOTIFICATION_OUTBOX_POLL_INTERVAL_MS:1000}
+      batch-size: ${APP_NOTIFICATION_OUTBOX_BATCH_SIZE:100}
