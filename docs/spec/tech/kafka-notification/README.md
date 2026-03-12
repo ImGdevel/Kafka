@@ -17,10 +17,20 @@
 
 현재 상태:
 
-- 구현 완료
+- 구현 완료 (5-Pillar EOS + 3개 개선 적용)
 - 로컬 실행 가능
 - Docker 실행 가능
 - 통합테스트 포함
+
+EOS 개선 이력:
+
+| # | Pillar | 개선 내용 |
+|---|---|---|
+| 개선 1 | Pillar 1 | OutboxRelay: `send().get()` → `executeInTransaction()` + `transaction-id-prefix` 추가 |
+| 개선 2 | Pillar 2 | NotificationQueryService: ACCEPTED 상태 가드로 멱등 UPDATE 강화 |
+| 개선 3 | Pillar 4 | SentNotificationStore 인터페이스 분리 + DbSentNotificationStore(DB 기반 구현) |
+
+자세한 분석: [EOS 구현 검토 및 개선 기록](../../../spring_kafka.wiki/notification-eos-analysis.md)
 
 관련 모듈 문서:
 
