@@ -40,7 +40,11 @@ public class KafkaErrorHandlerConfig {
 	) {
 		return new DeadLetterPublishingRecoverer(
 			kafkaTemplate,
-			(record, ex) -> new TopicPartition(dltTopic, record.partition())
+			// 학습 포인트: 파티션 번호를 -1로 지정하면 브로커가 key 기반 파티셔닝을 수행한다.
+			// record.partition()으로 고정하면 원본 토픽과 DLT 토픽의 파티션 수가 다를 때
+			// InvalidPartitionException이 발생한다 (클러스터 파티션 변경 시 무조건 발생).
+			// key가 null이면 라운드로빈으로 배정된다.
+			(record, ex) -> new TopicPartition(dltTopic, -1)
 		);
 	}
 
