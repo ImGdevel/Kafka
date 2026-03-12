@@ -25,6 +25,38 @@ services:
       timeout: 10s
       retries: 10
 
+  postgres-producer:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: notification_producer
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: notification
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_producer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notification_producer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-worker:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: notification_worker
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: notification
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_worker_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notification_worker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   notification-producer-app:
     build:
       context: .
@@ -34,10 +66,15 @@ services:
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-producer:5432/notification_producer
+      SPRING_DATASOURCE_USERNAME: notification
+      SPRING_DATASOURCE_PASSWORD: notification
     ports:
       - "8082:8082"
     depends_on:
       kafka:
+        condition: service_healthy
+      postgres-producer:
         condition: service_healthy
     restart: on-failure
 
@@ -50,10 +87,17 @@ services:
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_NOTIFICATION_RETRY_BACKOFF_MILLIS: 100
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-worker:5432/notification_worker
+      SPRING_DATASOURCE_USERNAME: notification
+      SPRING_DATASOURCE_PASSWORD: notification
     depends_on:
       kafka:
+        condition: service_healthy
+      postgres-worker:
         condition: service_healthy
     restart: on-failure
 
 volumes:
   kafka_notification_data:
+  postgres_producer_data:
+  postgres_worker_data:

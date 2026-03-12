@@ -1,7 +1,7 @@
 package com.study.notification.producer.web;
 
 import com.study.notification.domain.NotificationChannel;
-import com.study.notification.producer.service.NotificationQuerySnapshot;
+import com.study.notification.producer.persistence.NotificationRequestEntity;
 import com.study.notification.producer.service.NotificationQueryStatus;
 
 /**
@@ -29,17 +29,17 @@ public record NotificationStatusResponse(
 	String reason
 ) {
 
-	public static NotificationStatusResponse from(NotificationQuerySnapshot snapshot) {
+	public static NotificationStatusResponse from(NotificationRequestEntity entity) {
 		return new NotificationStatusResponse(
-			snapshot.notificationId(),
-			snapshot.traceId(),
-			snapshot.channel(),
-			snapshot.recipient(),
-			snapshot.subject(),
-			snapshot.templateCode(),
-			snapshot.status(),
-			snapshot.provider(),
-			snapshot.reason()
+			entity.getNotificationId(),
+			entity.getTraceId(),
+			entity.getChannel(),
+			entity.getRecipient(),
+			entity.getSubject(),
+			entity.getTemplateCode(),
+			NotificationQueryStatus.valueOf(entity.getStatus()),
+			entity.getProvider(),
+			entity.getReason()
 		);
 	}
 }

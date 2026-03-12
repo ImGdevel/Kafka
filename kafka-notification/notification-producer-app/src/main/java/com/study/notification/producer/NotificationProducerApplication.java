@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @ConfigurationPropertiesScan
 @SpringBootApplication
+@org.springframework.scheduling.annotation.EnableScheduling
 public class NotificationProducerApplication {
 
 	public static void main(String[] args) {

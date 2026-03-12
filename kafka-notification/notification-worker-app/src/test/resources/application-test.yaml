@@ -1,0 +1,16 @@
+# 테스트 전용 Kafka 설정 오버라이드
+# Kafka 트랜잭션을 비활성화하여 EmbeddedKafka 환경에서 단순한 메시지 흐름 검증에 집중한다.
+# ~ (YAML null) 로 설정하면 Spring Boot가 null로 바인딩 → DefaultKafkaProducerFactory가 비 트랜잭션 모드로 동작
+spring:
+  kafka:
+    producer:
+      transaction-id-prefix: ~   # null → KafkaTransactionManager 생성 안 됨, 비 트랜잭션 KafkaTemplate
+      acks: 1
+      retries: 0
+      properties:
+        enable.idempotence: "false"
+    consumer:
+      properties:
+        isolation.level: read_uncommitted  # 트랜잭션 없이 모든 메시지 즉시 가시
+    listener:
+      ack-mode: MANUAL   # MANUAL ack은 유지 (NotificationRequestedListener 시그니처 호환)

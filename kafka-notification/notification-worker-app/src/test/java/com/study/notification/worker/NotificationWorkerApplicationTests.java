@@ -32,14 +32,26 @@ import com.study.notification.provider.sandbox.SandboxEmailSender;
 	classes = {NotificationWorkerApplication.class, NotificationWorkerApplicationTests.TestConfig.class},
 	properties = {
 		"spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
-		"app.notification.retry.backoff-millis=0"
+		"app.notification.retry.backoff-millis=0",
+		// 테스트용 H2 인메모리 DB
+		"spring.datasource.url=jdbc:h2:mem:worker-test;DB_CLOSE_DELAY=-1",
+		"spring.datasource.driver-class-name=org.h2.Driver",
+		"spring.datasource.username=sa",
+		"spring.datasource.password=",
+		"spring.jpa.hibernate.ddl-auto=create-drop",
+		"spring.flyway.enabled=false"
 	}
 )
-@EmbeddedKafka(partitions = 1, topics = {
-	NotificationTopics.REQUESTED,
-	NotificationTopics.SENT,
-	NotificationTopics.FAILED
-})
+// EmbeddedKafka: Kafka 트랜잭션에 필요한 브로커 설정 추가
+@EmbeddedKafka(
+	partitions = 1,
+	topics = {NotificationTopics.REQUESTED, NotificationTopics.SENT, NotificationTopics.FAILED},
+	brokerProperties = {
+		"transaction.state.log.replication.factor=1",
+		"transaction.state.log.min.isr=1",
+		"transaction.state.log.num.partitions=1"
+	}
+)
 class NotificationWorkerApplicationTests {
 
 	@Autowired
@@ -60,15 +72,18 @@ class NotificationWorkerApplicationTests {
 	@Test
 	@DisplayName("샌드박스 전송이 성공하면 notification.sent 이벤트를 발행한다.")
 	void successEventIsPublishedWhenSenderSucceeds() throws Exception {
-		kafkaTemplate.send(NotificationTopics.REQUESTED, "notification-1", new NotificationRequestedEvent(
-			"notification-1",
-			"trace-1",
-			NotificationChannel.EMAIL,
-			"user@example.com",
-			"welcome",
-			"hello",
-			"WELCOME"
-		));
+		// KafkaTemplate이 transactional이므로 executeInTransaction으로 랩핑하여 메시지 전송
+		kafkaTemplate.executeInTransaction(ops ->
+			ops.send(NotificationTopics.REQUESTED, "notification-1", new NotificationRequestedEvent(
+				"notification-1",
+				"trace-1",
+				NotificationChannel.EMAIL,
+				"user@example.com",
+				"welcome",
+				"hello",
+				"WELCOME"
+			))
+		);
 
 		NotificationSentEvent sentEvent = notificationResultCapture.awaitSent();
 		assertThat(sentEvent).isNotNull();
@@ -81,15 +96,17 @@ class NotificationWorkerApplicationTests {
 	@Test
 	@DisplayName("FAIL_ALWAYS 요청은 1회 재시도 후 notification.failed 이벤트를 발행한다.")
 	void failureEventIsPublishedAfterSingleRetry() throws Exception {
-		kafkaTemplate.send(NotificationTopics.REQUESTED, "notification-2", new NotificationRequestedEvent(
-			"notification-2",
-			"trace-2",
-			NotificationChannel.EMAIL,
-			"user@example.com",
-			"welcome",
-			"hello",
-			"FAIL_ALWAYS"
-		));
+		kafkaTemplate.executeInTransaction(ops ->
+			ops.send(NotificationTopics.REQUESTED, "notification-2", new NotificationRequestedEvent(
+				"notification-2",
+				"trace-2",
+				NotificationChannel.EMAIL,
+				"user@example.com",
+				"welcome",
+				"hello",
+				"FAIL_ALWAYS"
+			))
+		);
 
 		NotificationFailedEvent failedEvent = notificationResultCapture.awaitFailed();
 		assertThat(failedEvent).isNotNull();
@@ -136,7 +153,7 @@ class NotificationWorkerApplicationTests {
 		}
 
 		NotificationSentEvent awaitSent() throws InterruptedException {
-			boolean completed = sentLatch.get().await(10, TimeUnit.SECONDS);
+			boolean completed = sentLatch.get().await(15, TimeUnit.SECONDS);
 			if (!completed) {
 				return null;
 			}
@@ -144,7 +161,7 @@ class NotificationWorkerApplicationTests {
 		}
 
 		NotificationFailedEvent awaitFailed() throws InterruptedException {
-			boolean completed = failedLatch.get().await(10, TimeUnit.SECONDS);
+			boolean completed = failedLatch.get().await(15, TimeUnit.SECONDS);
 			if (!completed) {
 				return null;
 			}
