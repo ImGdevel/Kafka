@@ -1,0 +1,52 @@
+<mxfile host="app.diagrams.net" modified="2026-03-12T12:10:00.000Z" agent="draw.io" version="24.7.17">
+  <diagram id="phase2" name="phase-2-architecture">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="client" value="Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="220" width="120" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="producer" value="notification-producer-app&#xa;요청 저장 + 상태 조회" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="220" y="120" width="220" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="producerdb" value="Producer PostgreSQL&#xa;notification_requests&#xa;outbox_events" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="240" y="310" width="180" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="relay" value="OutboxRelay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="520" y="140" width="160" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="kafka" value="Kafka&#xa;notification.requested&#xa;notification.sent / failed" style="shape=process;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="760" y="140" width="220" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="worker" value="notification-worker-app&#xa;MANUAL ack + retry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="120" width="220" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="workerdb" value="Worker PostgreSQL&#xa;processed_notifications" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="310" width="180" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="client" target="producer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="요청/상태 저장" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="producer" target="producerdb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="미발행 이벤트 조회" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="producerdb" target="relay">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="요청 이벤트 릴레이" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="relay" target="kafka">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="요청 소비" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="kafka" target="worker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" value="처리 이력 저장" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="worker" target="workerdb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" value="결과 이벤트 반영" style="endArrow=block;html=1;rounded=0;" edge="1" parent="1" source="kafka" target="producer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
