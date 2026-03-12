@@ -28,7 +28,9 @@ public class NotificationQueryService {
 
 	private final NotificationRequestRepository requestRepository;
 
-	@Transactional
+	// Pillar 1 개선: transaction-id-prefix 추가로 KafkaTransactionManager가 생성되어
+	// @Transactional만 사용하면 NoUniqueBeanDefinitionException 발생 → JPA TM 명시 필수.
+	@Transactional("transactionManager")
 	public void markSent(NotificationSentEvent event) {
 		requestRepository.findById(event.notificationId())
 			.ifPresentOrElse(
@@ -40,7 +42,7 @@ public class NotificationQueryService {
 			);
 	}
 
-	@Transactional
+	@Transactional("transactionManager")
 	public void markFailed(NotificationFailedEvent event) {
 		requestRepository.findById(event.notificationId())
 			.ifPresentOrElse(
@@ -52,7 +54,7 @@ public class NotificationQueryService {
 			);
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional(value = "transactionManager", readOnly = true)
 	public NotificationStatusResponse get(String notificationId) {
 		NotificationRequestEntity entity = requestRepository.findById(notificationId)
 			.orElseThrow(() -> new ResponseStatusException(

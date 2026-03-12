@@ -51,19 +51,22 @@ import com.study.notification.producer.web.NotificationStatusResponse;
 		"spring.jpa.hibernate.ddl-auto=create-drop",
 		"spring.flyway.enabled=false",
 		// OutboxRelay를 빠르게 실행하여 테스트 속도 개선
-		"app.notification.outbox.poll-interval-ms=100",
-		// 프로듀서 멱등성 비활성화 (EmbeddedKafka 단순 설정)
-		"spring.kafka.producer.properties.enable.idempotence=false",
-		"spring.kafka.producer.acks=1",
-		"spring.kafka.producer.retries=0"
+		"app.notification.outbox.poll-interval-ms=100"
+		// Pillar 1 개선: KafkaTemplate이 transactional이므로 producer 멱등성/acks 기본값 유지.
+		// EmbeddedKafka brokerProperties에서 TX 관련 브로커 설정을 별도로 구성한다.
 	}
 )
 @AutoConfigureMockMvc
-@EmbeddedKafka(partitions = 1, topics = {
-	NotificationTopics.REQUESTED,
-	NotificationTopics.SENT,
-	NotificationTopics.FAILED
-})
+// EmbeddedKafka: Kafka 트랜잭션에 필요한 브로커 설정 추가 (Pillar 1 개선)
+@EmbeddedKafka(
+	partitions = 1,
+	topics = {NotificationTopics.REQUESTED, NotificationTopics.SENT, NotificationTopics.FAILED},
+	brokerProperties = {
+		"transaction.state.log.replication.factor=1",
+		"transaction.state.log.min.isr=1",
+		"transaction.state.log.num.partitions=1"
+	}
+)
 class NotificationProducerApplicationTests {
 
 	private static final Duration QUERY_TIMEOUT = Duration.ofSeconds(10);
@@ -135,7 +138,8 @@ class NotificationProducerApplicationTests {
 	void getNotificationReturnsSentStatusAfterSentEvent() throws Exception {
 		NotificationAcceptedResponse acceptedResponse = createNotification("EMAIL", "WELCOME");
 
-		kafkaTemplate.send(
+		// KafkaTemplate이 transactional이므로 executeInTransaction으로 랩핑하여 메시지 전송
+		kafkaTemplate.executeInTransaction(ops -> ops.send(
 			NotificationTopics.SENT,
 			acceptedResponse.notificationId(),
 			new NotificationSentEvent(
@@ -144,7 +148,7 @@ class NotificationProducerApplicationTests {
 				NotificationChannel.EMAIL,
 				"SandboxEmailSender"
 			)
-		);
+		));
 
 		NotificationStatusResponse response = awaitNotificationStatus(
 			acceptedResponse.notificationId(),
@@ -159,7 +163,7 @@ class NotificationProducerApplicationTests {
 	void getNotificationReturnsFailedStatusAfterFailedEvent() throws Exception {
 		NotificationAcceptedResponse acceptedResponse = createNotification("SLACK", "WELCOME");
 
-		kafkaTemplate.send(
+		kafkaTemplate.executeInTransaction(ops -> ops.send(
 			NotificationTopics.FAILED,
 			acceptedResponse.notificationId(),
 			new NotificationFailedEvent(
@@ -168,7 +172,7 @@ class NotificationProducerApplicationTests {
 				NotificationChannel.SLACK,
 				"2회 시도 후 실패"
 			)
-		);
+		));
 
 		NotificationStatusResponse response = awaitNotificationStatus(
 			acceptedResponse.notificationId(),

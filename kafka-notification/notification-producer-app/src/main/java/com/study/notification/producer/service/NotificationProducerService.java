@@ -56,7 +56,7 @@ public class NotificationProducerService {
 	 *
 	 * <p>트랜잭션이 커밋된 이후 OutboxRelay가 outbox_events를 읽어 Kafka에 발행한다.
 	 */
-	@Transactional
+	@Transactional("transactionManager")
 	public NotificationAcceptedResponse accept(NotificationRequest request) {
 		validateAllowedChannel(request);
 

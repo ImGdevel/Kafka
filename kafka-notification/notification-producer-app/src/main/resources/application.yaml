@@ -28,6 +28,10 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Pillar 1 (개선): Outbox 릴레이가 Kafka TX로 send + markPublished를 원자화한다.
+      # TX 커밋 전 메시지는 read_committed 소비자에게 보이지 않으므로
+      # "send 성공 + markPublished 실패 → 중복 발행" 시나리오를 차단한다.
+      transaction-id-prefix: ${APP_NOTIFICATION_OUTBOX_TX_ID_PREFIX:notification-outbox-tx-}
       # Pillar 5: 프로듀서 멱등성 — 브로커가 중복 배치를 탐지하여 정확히 1회 기록한다
       acks: all
       retries: 3
