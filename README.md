@@ -1,14 +1,11 @@
-# Spring Kafka Study
+<img width="1672" height="610" alt="ChatGPT Image 2026년 4월 27일 오후 06_57_44" src="https://github.com/user-attachments/assets/8c4f2f12-c540-4979-b422-c384c5e1d9ff" />
+
+# [Spring Kafka Study](https://github.com/ImGdevel/spring_kafka/wiki)
 
 Spring Boot 기반으로 Kafka 메시징 흐름을 실습하고, 같은 인터페이스로 Redis Streams까지 비교하는 기록 저장소 입니다.
 
-<br />
 
-## Wiki
 
-학습/운영 메모는 Wiki에 정리한다.
-
-### -> [GitHub Wiki](https://github.com/ImGdevel/spring_kafka/wiki)
 
 <br />
 
