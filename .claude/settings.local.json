@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm /c/Users/imdls/workspace/Kafka/docs/spec/tech/kafka-producer.md)",
+      "Bash(docker-compose ps *)",
+      "Bash(docker-compose up *)",
+      "Bash(./gradlew :kafka-study:test -Dgroups=lab --info)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\imdls\\workspace\\Kafka\\docs\\spec\\tech"
+    ]
+  }
+}
