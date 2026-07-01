@@ -102,6 +102,49 @@ services:
       timeout: 10s
       retries: 15
 
+  kafka-connect:
+    profiles: ["connect"]
+    image: apache/kafka:3.7.0
+    container_name: kafka-connect-1
+    user: "0"
+    ports:
+      - "8083:8083"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        chmod 777 /tmp/connect-data
+        PROPS=/tmp/connect.properties
+        echo "bootstrap.servers=kafka-1:29092,kafka-2:29092,kafka-3:29092" > $$PROPS
+        echo "group.id=kafka-connect-cluster" >> $$PROPS
+        echo "key.converter=org.apache.kafka.connect.storage.StringConverter" >> $$PROPS
+        echo "value.converter=org.apache.kafka.connect.storage.StringConverter" >> $$PROPS
+        echo "offset.storage.topic=connect-offsets" >> $$PROPS
+        echo "config.storage.topic=connect-configs" >> $$PROPS
+        echo "status.storage.topic=connect-status" >> $$PROPS
+        echo "offset.storage.replication.factor=1" >> $$PROPS
+        echo "config.storage.replication.factor=1" >> $$PROPS
+        echo "status.storage.replication.factor=1" >> $$PROPS
+        echo "listeners=HTTP://:8083" >> $$PROPS
+        echo "rest.advertised.host.name=localhost" >> $$PROPS
+        echo "rest.advertised.port=8083" >> $$PROPS
+        echo "plugin.path=/opt/kafka/libs" >> $$PROPS
+        exec /opt/kafka/bin/connect-distributed.sh $$PROPS
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    volumes:
+      - kafka_connect_data:/tmp/connect-data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8083' 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   notification-producer-db:
     profiles: ["notification"]
     image: postgres:16-alpine
@@ -191,5 +234,6 @@ volumes:
   kafka_1_data:
   kafka_2_data:
   kafka_3_data:
+  kafka_connect_data:
   notification_producer_db_data:
   notification_worker_db_data:

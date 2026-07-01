@@ -52,6 +52,26 @@ class LabHelper {
         }
     }
 
+    /** 사용자 설정을 포함한 토픽을 생성한다. 이미 존재하면 삭제 후 재생성한다. */
+    static void createTopicWithConfig(String name, int partitions, short replication,
+                                      Map<String, String> configs) throws Exception {
+        Properties props = new Properties();
+        props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+
+        try (AdminClient admin = AdminClient.create(props)) {
+            try {
+                admin.deleteTopics(List.of(name)).all().get();
+                Thread.sleep(1500);
+            } catch (Exception ignored) {}
+
+            org.apache.kafka.clients.admin.NewTopic topic =
+                    new org.apache.kafka.clients.admin.NewTopic(name, partitions, replication);
+            topic.configs(configs);
+            admin.createTopics(List.of(topic)).all().get();
+            Thread.sleep(500);
+        }
+    }
+
     /** 토픽을 삭제한다. 없으면 무시한다. */
     static void deleteTopic(String name) {
         Properties props = new Properties();
