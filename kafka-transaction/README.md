@@ -40,8 +40,8 @@ Kafka가 안 떠 있으면 `assumeTrue`로 테스트가 실패가 아니라 skip
 | Lab01 | 좀비 펜싱 | 같은 `transactional.id`의 이전 인스턴스는 자동으로 무력화된다 | 완료 |
 | Lab02 | `isolation.level`과 LSO | 긴 트랜잭션은 같은 파티션의 무관한 메시지까지 막는다 | 완료 |
 | Lab03 | consume-transform-produce | 출력 produce와 입력 offset commit이 하나의 원자 단위가 된다 | 완료 |
-| Lab04 | `transaction.timeout.ms` | 트랜잭션을 열어둔 채 방치하면 코디네이터가 대신 끝낸다 | 예정 |
-| Lab05 | Spring 추상화 | Spring Kafka의 트랜잭션은 Lab01~04와 같은 메커니즘 위에 있다 | 예정 |
+| Lab04 | `transaction.timeout.ms` | 트랜잭션을 열어둔 채 방치하면 코디네이터가 대신 끝낸다 | 완료 |
+| Lab05 | Spring 추상화 | Spring 추상화는 새 보장을 추가하지 않는다 | 완료 |
 | Lab06 | 트랜잭션의 한계 | Kafka 트랜잭션은 Kafka 안에서만 원자적이다 | 예정 |
 | Lab07 | EOS의 비용 | 정확히 한 번은 공짜가 아니다 — 트랜잭션 경계 설계가 성능을 좌우한다 | 예정 |
 | Lab08 | 장애 내성 | 트랜잭션은 코디네이터와 min ISR에 의존한다 | 예정 |
@@ -64,6 +64,20 @@ Lab01 → 02 → 03이 핵심 축이다. Lab04는 Lab02의 후속(막힌 LSO가 
 - Q1. `sendOffsetsToTransaction(offsets, consumer.groupMetadata())` 커밋 → 출력 3건 노출 + 입력 그룹 committed offset이 3으로 전진
 - Q2. 커밋 직전 abort → 출력도 안 보이고 오프셋도 전진 안 함. 되감아 재처리하면 출력은 **정확히 1건**
 - Q3. (대조군) `auto.commit`은 애플리케이션 로직과 무관한 시점에 발화 → 오프셋만 커밋되고 출력은 없는 상태가 만들어진다 = **유실**
+
+**Lab04 — `transaction.timeout.ms`** (`Lab04TransactionTimeoutTest`)
+- Q1. 타임아웃된 트랜잭션은 코디네이터가 강제 abort하면서 epoch를 올린다 → 뒤늦은 `commitTransaction()`은 실패. Lab01의 좀비와 같은 처지지만, 펜싱의 원인이 다른 Producer가 아니라 코디네이터 자신이다
+- Q2. **아무도 개입하지 않아도** LSO가 저절로 풀린다 (Lab01 Q2는 새 Producer가 풀어줬다). 즉 Lab02의 head-of-line blocking은 최대 `transaction.timeout.ms + 청소 주기`만큼만 지속된다
+- Q3. 브로커 `transaction.max.timeout.ms`(기본 15분)를 넘는 값은 `initTransactions()`에서 거부 → 클라이언트가 무한정 붙잡아둘 수 없다
+
+> 대기 시간 주의: 코디네이터의 만료 청소는 즉시가 아니라 주기(기본 10초) 단위다. 고정 `sleep` 대신 LSO 전진을 폴링한다. 전체 40~50초 소요.
+
+**Lab05 — Spring 추상화** (`Lab05SpringTransactionTest`)
+- Q1. `KafkaTemplate.executeInTransaction()` — 정상 종료는 커밋, 콜백 예외는 abort. 결과는 raw Producer와 완전히 동일
+- Q2. `setTransactionIdPrefix()`로 준 접두사가 실제로 코디네이터에 등록된다 (`listTransactions()`로 확인). prefix는 우리가, 접미사는 Spring이 붙인다
+- Q3. `KafkaTransactionManager` + `TransactionTemplate` (= `@Transactional`이 타는 경로) — 3건 send 후 예외 → 전부 롤백. 커밋 시 `HW=4`(메시지 3 + 마커 1)로 Lab02 Q3의 마커 산술과 일치
+
+> Spring 컨텍스트를 띄우지 않는다. 이 모듈은 `src/main`이 없어 `@SpringBootTest`가 `@SpringBootConfiguration`을 못 찾는다. 객체를 직접 조립하는 편이 검증 대상도 선명하다.
 
 ## 공통 유틸 (`TxHelper`)
 
