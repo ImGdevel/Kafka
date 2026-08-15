@@ -42,9 +42,11 @@ Kafka가 안 떠 있으면 `assumeTrue`로 테스트가 실패가 아니라 skip
 | Lab03 | consume-transform-produce | 출력 produce와 입력 offset commit이 하나의 원자 단위가 된다 | 완료 |
 | Lab04 | `transaction.timeout.ms` | 트랜잭션을 열어둔 채 방치하면 코디네이터가 대신 끝낸다 | 완료 |
 | Lab05 | Spring 추상화 | Spring 추상화는 새 보장을 추가하지 않는다 | 완료 |
-| Lab06 | 트랜잭션의 한계 | Kafka 트랜잭션은 Kafka 안에서만 원자적이다 | 예정 |
-| Lab07 | EOS의 비용 | 정확히 한 번은 공짜가 아니다 — 트랜잭션 경계 설계가 성능을 좌우한다 | 예정 |
-| Lab08 | 장애 내성 | 트랜잭션은 코디네이터와 min ISR에 의존한다 | 예정 |
+| Lab06 | 트랜잭션의 한계 | Kafka 트랜잭션은 Kafka 안에서만 원자적이다 | 완료 |
+| Lab07 | EOS의 비용 | 비용은 메시지 수가 아니라 트랜잭션 수에 비례한다 | 완료 |
+| Lab08 | 장애 내성 | 트랜잭션은 코디네이터와 min ISR에 의존한다 | 완료 ⚠ |
+
+> ⚠ Lab08은 **브로커(kafka-3)를 정지시켰다가 복구한다.** 같은 클러스터를 쓰는 다른 작업이 있으면 먼저 중단할 것. 자세한 안전장치는 아래 참고.
 
 Lab01 → 02 → 03이 핵심 축이다. Lab04는 Lab02의 후속(막힌 LSO가 언제 풀리는가), Lab05는 Lab03의 Spring판이다.
 
@@ -78,6 +80,27 @@ Lab01 → 02 → 03이 핵심 축이다. Lab04는 Lab02의 후속(막힌 LSO가 
 - Q3. `KafkaTransactionManager` + `TransactionTemplate` (= `@Transactional`이 타는 경로) — 3건 send 후 예외 → 전부 롤백. 커밋 시 `HW=4`(메시지 3 + 마커 1)로 Lab02 Q3의 마커 산술과 일치
 
 > Spring 컨텍스트를 띄우지 않는다. 이 모듈은 `src/main`이 없어 `@SpringBootTest`가 `@SpringBootConfiguration`을 못 찾는다. 객체를 직접 조립하는 편이 검증 대상도 선명하다.
+
+**Lab06 — 트랜잭션의 한계** (`Lab06ExternalSystemLimitTest`)
+- Q1. Kafka 먼저 커밋 → 외부 커밋 실패 = Kafka에만 있는 고아 메시지. 이미 커밋된 트랜잭션은 되돌릴 수 없다(커밋 후 `abortTransaction()` 확인)
+- Q2. 순서를 뒤집으면 반대 방향 불일치. **어떤 순서로도 두 커밋 사이의 창은 남는다** — `ChainedTransactionManager`는 창을 좁힐 뿐 없애지 못한다
+- Q3. Outbox 방향 — 쓰기를 외부 저장소 한 곳으로 단일화하면 원자성이 그 저장소의 트랜잭션 하나로 환원된다. 릴레이는 at-least-once이므로 중복 발행이 나고, 소비자 멱등 처리로 최종 1건이 된다
+
+> 외부 시스템은 실제 DB가 아니라 테스트 클래스 안의 in-memory 스텁이다. compose의 Postgres는 `profiles: ["notification"]` 뒤에 있고, 이 명제를 보이는 데 진짜 DB는 필요 없다 — 필요한 건 "Kafka 커밋과 외부 커밋이 별개의 두 연산"이라는 사실뿐이다.
+
+**Lab07 — EOS의 비용** (`Lab07TransactionCostTest`)
+- Q1. 일반 Producer vs 트랜잭션 Producer 처리량 비교. 끝 오프셋으로 마커 유무 확인(0개 vs 1개)
+- Q2. 300건을 1건씩 300트랜잭션 → 마커 300개(HW 600) / 100건 묶음 3트랜잭션 → 마커 3개(HW 303). "느린 이유"가 추측이 아니라 로그에 남은 control batch 수로 설명된다
+- Q3. 트랜잭션이 3개 파티션에 걸치면 **파티션마다** 마커가 하나씩 생긴다
+
+> 속도는 **출력만** 하고 단정하지 않는다. 로컬 Docker에서 성능 부등식은 불안정하다. `assertThat`으로 단정하는 것은 마커 개수·끝 오프셋 같은 결정론적 값뿐이다.
+
+**Lab08 — 장애 내성** (`Lab08FaultToleranceTest`)
+- Q1. RF=3 토픽에 `min.insync.replicas=4` → 구조적으로 만족 불가. 트랜잭션 send가 거부되고 **부분 반영은 없다**. 브로커를 죽이지 않고 재현한다
+- Q2. kafka-3 정지 → 브로커 2대 상태에서도 트랜잭션이 계속 커밋된다. RF=3 / min ISR=2는 "1대 장애를 견딘다"는 뜻
+- Q3. `__transaction_state`가 RF=3이라 브로커 1대가 빠져도 트랜잭션 조회·신규 개시가 된다. 코디네이터를 특정해 죽이는 것은 파티션 배치에 따라 불안정해 시도하지 않는다
+
+> **안전장치**: `docker` CLI가 없거나 브로커가 3대가 아니면 전체 skip. 정지 대상은 kafka-3 하나로 고정(9092 부트스트랩인 kafka-1은 건드리지 않는다). 각 테스트는 `try/finally`로 감싸고 단정문을 `finally` 바깥에 두어, 단정 실패로도 복구를 건너뛰지 않는다. `@AfterAll`에서 브로커 3대 복구를 한 번 더 확인하고, 실패 시 수동 복구 명령을 출력한다. `stop`/`start`만 쓰며 `rm`이나 볼륨 삭제는 하지 않는다.
 
 ## 공통 유틸 (`TxHelper`)
 
