@@ -13,6 +13,7 @@ Spring Boot 기반으로 Kafka 메시징 흐름을 실습하고, 같은 인터�
 
 - `infra-message-queue`: 메시지 발행 인터페이스와 Kafka/Redis 구현
 - `kafka-study`: Kafka 학습용 API, listener, DLT, 트랜잭션 실습 코드
+- `kafka-transaction`: Kafka 트랜잭션(EOS) 실습 코드 (테스트 전용)
 - `kafka-redis-compare`: Redis Streams 비교 실습 코드
 - `kafka-notification`: Producer 앱과 Worker 앱을 분리한 알림 전송 E2E 실습
 
