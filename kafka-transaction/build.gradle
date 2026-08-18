@@ -1,4 +1,6 @@
 dependencies {
     testImplementation 'org.springframework.kafka:spring-kafka'
     testImplementation 'org.springframework.kafka:spring-kafka-test'
+    // Lab09 — Kafka Streams의 exactly_once_v2 실습용. 버전은 Spring Boot BOM이 관리한다.
+    testImplementation 'org.apache.kafka:kafka-streams'
 }
