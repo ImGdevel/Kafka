@@ -45,10 +45,14 @@ Kafka가 안 떠 있으면 `assumeTrue`로 테스트가 실패가 아니라 skip
 | Lab06 | 트랜잭션의 한계 | Kafka 트랜잭션은 Kafka 안에서만 원자적이다 | 완료 |
 | Lab07 | EOS의 비용 | 비용은 메시지 수가 아니라 트랜잭션 수에 비례한다 | 완료 |
 | Lab08 | 장애 내성 | 트랜잭션은 코디네이터와 min ISR에 의존한다 | 완료 ⚠ |
+| Lab09 | Streams `exactly_once_v2` | Streams의 EOS는 Lab03을 자동화한 것이다 — 새 마법이 아니다 | 완료 |
+| Lab10 | 내부 토픽 직접 관찰 | 트랜잭션 상태와 오프셋 커밋은 평범한 토픽 레코드다 | 완료 |
+| Lab11 | 소비 지연 측정 | `read_committed` 지연은 트랜잭션 길이에 비례한다 | 완료 |
 
 > ⚠ Lab08은 **브로커(kafka-3)를 정지시켰다가 복구한다.** 같은 클러스터를 쓰는 다른 작업이 있으면 먼저 중단할 것. 자세한 안전장치는 아래 참고.
 
 Lab01 → 02 → 03이 핵심 축이다. Lab04는 Lab02의 후속(막힌 LSO가 언제 풀리는가), Lab05는 Lab03의 Spring판이다.
+Lab09~11은 확장편이다. Lab09는 Lab03의 상위 레이어(Streams), Lab10은 Lab03이 원자성을 얻은 근거를 로그에서 직접 확인, Lab11은 Lab02의 정량화다.
 
 ### 각 Lab이 검증하는 것
 
@@ -101,6 +105,27 @@ Lab01 → 02 → 03이 핵심 축이다. Lab04는 Lab02의 후속(막힌 LSO가 
 - Q3. `__transaction_state`가 RF=3이라 브로커 1대가 빠져도 트랜잭션 조회·신규 개시가 된다. 코디네이터를 특정해 죽이는 것은 파티션 배치에 따라 불안정해 시도하지 않는다
 
 > **안전장치**: `docker` CLI가 없거나 브로커가 3대가 아니면 전체 skip. 정지 대상은 kafka-3 하나로 고정(9092 부트스트랩인 kafka-1은 건드리지 않는다). 각 테스트는 `try/finally`로 감싸고 단정문을 `finally` 바깥에 두어, 단정 실패로도 복구를 건너뛰지 않는다. `@AfterAll`에서 브로커 3대 복구를 한 번 더 확인하고, 실패 시 수동 복구 명령을 출력한다. `stop`/`start`만 쓰며 `rm`이나 볼륨 삭제는 하지 않는다.
+
+**Lab09 — Streams `exactly_once_v2`** (`Lab09StreamsExactlyOnceTest`)
+- Q1. `processing.guarantee=exactly_once_v2` 토폴로지(입력 → 대문자 변환 → 출력)를 돌리면 출력이 `read_committed`에 정확히 5건 보인다
+- Q2. 출력 토픽 끝 오프셋 > 메시지 수 → Streams도 내부적으로 control batch를 쓴다. 마커 **개수**는 `commit.interval.ms`와 커밋 타이밍에 좌우되므로 "1개 이상"만 단정한다
+- Q3. `listTransactions()`에 `application.id`가 들어간 txId가 등록된다. Lab01(손으로 준 txId) → Lab05(Spring이 만든 txId) → Lab09(Streams가 만든 txId)가 **모두 같은 코디네이터 레지스트리**에 들어간다
+
+> Streams 내부 토픽 RF 기본값은 1이라 `REPLICATION_FACTOR_CONFIG=3`을 준다. `state.dir`은 실행마다 유니크 경로를 쓰고 `@AfterAll`에서 정리한다.
+
+**Lab10 — 내부 토픽 직접 관찰** (`Lab10InternalTopicsTest`)
+- Q1. 트랜잭션 수행 후 `__transaction_state`를 원시 바이트로 스캔 → 키 바이트에 그 `transactional.id`가 ASCII로 박혀 있다
+- Q2. `sendOffsetsToTransaction` 커밋 후 `__consumer_offsets`에서 consumer group id를 찾는다 → **오프셋 커밋이 토픽 쓰기라는 직접 증거** (Lab03이 원자성을 얻을 수 있었던 이유)
+- Q3. 컨테이너 안에서 `kafka-console-consumer.sh --formatter`로 사람이 읽을 수 있게 덤프. 포매터 클래스명은 버전 세부사항이라 **출력 전용이며 단정하지 않는다**
+
+> 내부 레코드 스키마를 파싱하지 않는다 (버전에 취약). 바이트 부분 문자열 검색으로 충분하다. 스캔은 `subscribe`가 아니라 `assign`을 써서 관측 자체가 `__consumer_offsets`를 오염시키지 않게 한다. 내부 토픽은 읽기만 하고 삭제·변경하지 않는다.
+
+**Lab11 — 소비 지연 측정** (`Lab11ConsumerLatencyTest`)
+- Q1. 즉시 커밋 시 두 격리 수준의 기준선 지연 측정
+- Q2. 트랜잭션을 T(500/1500/3000ms) 동안 열어뒀다 커밋 → `read_committed` 지연이 T를 따라 증가하는 표를 출력. `read_uncommitted`는 T와 무관하게 즉시 받는다
+- Q3. Lab02 Q1의 head-of-line blocking을 시간으로 환산 — 즉시 커밋한 B가 A의 T만큼 기다린다. **남의 트랜잭션이 내 지연이 된다**
+
+> 밀리초 값은 **출력만** 한다. 단정은 마진 50%를 둔 느슨한 관계식뿐이다(예: T=3000ms일 때 지연 > 1500ms). 측정은 `assign` + `seekToEnd` + 워밍업 수신 후 실제 poll 수신 시각으로 잰다.
 
 ## 공통 유틸 (`TxHelper`)
 
