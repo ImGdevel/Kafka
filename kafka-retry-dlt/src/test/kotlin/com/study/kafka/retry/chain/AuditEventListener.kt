@@ -10,20 +10,22 @@ import org.springframework.messaging.handler.annotation.Header
 import org.springframework.stereotype.Component
 
 /**
- * `@CustomRetryAndDLT`를 실제로 붙인 리스너. 알림을 켠 쪽(`alertOnDlt` 기본값 true).
+ * 알림을 끈 리스너(`alertOnDlt = false`).
  *
- * 페이로드가 `poison-`으로 시작하면 항상 실패시켜 재시도 체인을 끝까지 태운다.
+ * 코드는 [OrderEventListener]와 동일하게 [DeadLetterNotifier]를 부르지만,
+ * 정책이 `alertOnDlt = false`이므로 알림은 나가지 않아야 한다.
+ * 즉 알림 억제 판단이 리스너 코드가 아니라 애노테이션 속성에서 온다는 것을 보여준다.
  */
 @Component
-class OrderEventListener(
+class AuditEventListener(
 	private val recorder: RetryChainRecorder,
 	private val notifier: DeadLetterNotifier,
 ) {
 
 	private val log = LoggerFactory.getLogger(javaClass)
 
-	@CustomRetryAndDLT(owner = "order-team")
-	@KafkaListener(topics = [TOPIC], groupId = "order-consumer")
+	@CustomRetryAndDLT(attempts = "2", owner = "audit-team", alertOnDlt = false)
+	@KafkaListener(topics = [TOPIC], groupId = "audit-consumer")
 	fun handle(
 		payload: String,
 		@Header(KafkaHeaders.RECEIVED_TOPIC) topic: String,
@@ -36,10 +38,6 @@ class OrderEventListener(
 		}
 	}
 
-	/**
-	 * `owner`/`alertOnDlt`는 여기서 소비된다.
-	 * 핸들러는 토픽 이름만 넘기고, 담당자 조회와 알림 여부 판단은 [DeadLetterNotifier]가 정책에서 읽는다.
-	 */
 	@DltHandler
 	fun handleDlt(
 		payload: String,
@@ -52,6 +50,6 @@ class OrderEventListener(
 	}
 
 	companion object {
-		const val TOPIC = "orders"
+		const val TOPIC = "audits"
 	}
 }

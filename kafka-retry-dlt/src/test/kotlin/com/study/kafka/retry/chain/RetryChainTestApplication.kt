@@ -1,7 +1,11 @@
 package com.study.kafka.retry.chain
 
+import com.study.kafka.retry.CustomRetryDltConfiguration
+import com.study.kafka.retry.DeadLetterAlerter
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import org.springframework.kafka.annotation.EnableKafkaRetryTopic
 import org.springframework.kafka.retrytopic.RetryTopicSchedulerWrapper
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
@@ -14,6 +18,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
  */
 @SpringBootApplication
 @EnableKafkaRetryTopic
+@Import(CustomRetryDltConfiguration::class)
 class RetryChainTestApplication {
 
 	@Bean
@@ -26,4 +31,10 @@ class RetryChainTestApplication {
 	 */
 	@Bean
 	fun retryTopicSchedulerWrapper() = RetryTopicSchedulerWrapper(ThreadPoolTaskScheduler().apply { initialize() })
+
+	/** 기본 `LoggingDeadLetterAlerter` 대신 알림을 기록해 검증할 수 있게 갈아 끼운다. */
+	@Bean
+	@Primary
+	fun recordingDeadLetterAlerter(recorder: RetryChainRecorder) =
+		DeadLetterAlerter { alert -> recorder.recordAlert(alert) }
 }

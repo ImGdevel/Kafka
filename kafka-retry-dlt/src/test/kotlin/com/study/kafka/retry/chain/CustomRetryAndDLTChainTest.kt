@@ -4,6 +4,7 @@ import org.apache.kafka.clients.admin.AdminClient
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import com.study.kafka.retry.CustomRetryDltPolicyRegistry
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.kafka.core.KafkaAdmin
@@ -11,6 +12,7 @@ import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.test.context.EmbeddedKafka
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -36,7 +38,7 @@ import kotlin.test.assertTrue
 		"app.kafka.retry.replication-factor=1",
 	],
 )
-@EmbeddedKafka(partitions = 1, topics = [OrderEventListener.TOPIC])
+@EmbeddedKafka(partitions = 1, topics = [OrderEventListener.TOPIC, AuditEventListener.TOPIC])
 @DisplayName("@CustomRetryAndDLT 재시도 체인 통합 검증")
 class CustomRetryAndDLTChainTest {
 
@@ -48,6 +50,9 @@ class CustomRetryAndDLTChainTest {
 
 	@Autowired
 	private lateinit var kafkaAdmin: KafkaAdmin
+
+	@Autowired
+	private lateinit var policyRegistry: CustomRetryDltPolicyRegistry
 
 	@BeforeEach
 	fun resetRecorder() = recorder.reset()
@@ -88,6 +93,48 @@ class CustomRetryAndDLTChainTest {
 		AdminClient.create(kafkaAdmin.configurationProperties).use { admin ->
 			val topics = admin.listTopics().names().get(10, TimeUnit.SECONDS)
 			assertTrue(topics.containsAll(listOf("orders", "orders-retry-0", "orders-retry-1", "orders-dlt")))
+		}
+	}
+
+	@Test
+	@DisplayName("owner가 DLT 알림에 실려 나간다")
+	fun `owner is carried into the dlt alert`() {
+		kafkaTemplate.send(OrderEventListener.TOPIC, "poison-3")
+		assertTrue(recorder.dltLatch.await(30, TimeUnit.SECONDS), "30초 안에 DLT 핸들러가 호출되지 않았다")
+
+		val alerts = recorder.alertsFor("poison-3")
+		assertEquals(1, alerts.size)
+		with(alerts.single()) {
+			assertEquals("order-team", owner)
+			assertEquals("orders-dlt", dltTopic)
+			assertEquals("OrderEventListener#handle", listenerId)
+			assertTrue(reason?.contains("처리 불가 메시지") == true, "실패 사유가 알림에 담기지 않았다: $reason")
+		}
+	}
+
+	@Test
+	@DisplayName("alertOnDlt=false인 리스너는 DLT에 적재돼도 알림을 보내지 않는다")
+	fun `alert is suppressed when alertOnDlt is false`() {
+		kafkaTemplate.send(AuditEventListener.TOPIC, "poison-4")
+		assertTrue(recorder.dltLatch.await(30, TimeUnit.SECONDS), "30초 안에 DLT 핸들러가 호출되지 않았다")
+
+		// attempts=2 이므로 원본 1회 + 재시도 1회 후 DLT로 간다.
+		// 재시도 토픽이 하나뿐이면 SUFFIX_WITH_INDEX_VALUE라도 인덱스를 붙이지 않아 이름이 `audits-retry`가 된다.
+		assertEquals(listOf("audits", "audits-retry", "audits-dlt"), recorder.topicsFor("poison-4"))
+		assertEquals(emptyList(), recorder.allAlerts())
+	}
+
+	@Test
+	@DisplayName("레지스트리가 리스너별 확장 속성을 색인한다")
+	fun `registry indexes extension attributes per listener`() {
+		with(assertNotNull(policyRegistry.findByOriginalTopic(OrderEventListener.TOPIC))) {
+			assertEquals("order-team", owner)
+			assertTrue(alertOnDlt)
+			assertEquals(listOf("orders-dlt"), dltTopics)
+		}
+		with(assertNotNull(policyRegistry.findByDltTopic("audits-dlt"))) {
+			assertEquals("audit-team", owner)
+			assertEquals(false, alertOnDlt)
 		}
 	}
 }
