@@ -39,7 +39,10 @@ import kotlin.test.assertTrue
 		"app.kafka.retry.replication-factor=1",
 	],
 )
-@EmbeddedKafka(partitions = 1, topics = [EosListener.TOPIC])
+@EmbeddedKafka(
+	partitions = 1,
+	topics = [EosListener.TOPIC, EosBlockingListener.TOPIC, EosChainListener.TOPIC],
+)
 @DisplayName("DLT 발행 EOS")
 class DltPublishEosTest {
 
@@ -76,6 +79,7 @@ class DltPublishEosTest {
 	@Test
 	@DisplayName("트랜잭션 커밋이 깨지면 발행분도 abort돼 DLT 중복이 생기지 않는다")
 	fun `aborted transaction does not leak a duplicate dlt record`() {
+		producerGate.targetGroupId = EosListener.GROUP
 		producerGate.startFailing()
 		kafkaTemplate.executeInTransaction { it.send(EosListener.TOPIC, "eos-poison") }
 
@@ -103,5 +107,66 @@ class DltPublishEosTest {
 			recorder.countListener("eos-poison") >= 2,
 			"롤백 후 재처리가 일어나지 않았다 → ${recorder.countListener("eos-poison")}",
 		)
+	}
+
+	@Test
+	@DisplayName("블로킹 재시도는 시도마다 트랜잭션을 새로 열고, DLT는 한 번만 쌓인다")
+	fun `blocking retries run in separate transactions`() {
+		val before = producerGate.snapshot()
+
+		kafkaTemplate.executeInTransaction { it.send(EosBlockingListener.TOPIC, "blocking-tx") }
+		assertTrue(recorder.awaitDlt("blocking-tx", 30), "블로킹 재시도 뒤 DLT까지 가지 못했다")
+		Thread.sleep(2_000)
+
+		val delta = producerGate.snapshot() - before
+		println("EOS-BLOCKING-TX $delta listenerCalls=${recorder.countListener("blocking-tx")}")
+
+		// blockingAttempts=3 → 로컬 3회 처리 후 DLT
+		assertEquals(3, recorder.countListener("blocking-tx"))
+		assertEquals(1, recorder.countDlt("blocking-tx"))
+
+		// 트랜잭션이 백오프 동안 열린 채 유지되면 begin이 1회여야 한다.
+		// 실제로는 시도마다 롤백 후 재폴링이라 begin이 시도 횟수만큼 늘어난다.
+		// 즉 transaction.timeout.ms 는 개별 시도 시간만 덮고, 전체 블로킹 구간을 덮지 않는다.
+		assertTrue(
+			delta.begins >= 3,
+			"블로킹 재시도가 한 트랜잭션 안에서 돈 것으로 보인다 → begins=${delta.begins}",
+		)
+		assertTrue(delta.aborts >= 2, "실패한 시도마다 abort가 있어야 한다 → aborts=${delta.aborts}")
+	}
+
+	@Test
+	@DisplayName("재시도 토픽이 여러 개인 체인도 트랜잭션에서 그대로 흐른다")
+	fun `multi hop retry chain works under transactions`() {
+		kafkaTemplate.executeInTransaction { it.send(EosChainListener.TOPIC, "chain-tx") }
+		assertTrue(recorder.awaitDlt("chain-tx", 40), "체인이 DLT까지 도달하지 못했다")
+		Thread.sleep(2_000)
+
+		assertEquals(
+			listOf("eos-chain", "eos-chain-retry-0", "eos-chain-retry-1", "eos-chain-dlt"),
+			recorder.hopsFor("chain-tx"),
+		)
+		assertEquals(1, recorder.countDlt("chain-tx"), "홉마다 커밋되므로 중복이 없어야 한다")
+	}
+
+	@Test
+	@DisplayName("체인 중간 홉의 커밋이 깨져도 다음 홉에 중복이 새지 않는다")
+	fun `commit failure mid chain does not duplicate the next hop`() {
+		producerGate.targetGroupId = EosChainListener.GROUP
+		producerGate.startFailing()
+
+		kafkaTemplate.executeInTransaction { it.send(EosChainListener.TOPIC, "chain-abort") }
+
+		assertTrue(producerGate.awaitBlockedCommit(30), "체인 홉의 커밋 차단이 관측되지 않았다")
+		producerGate.stopFailing()
+
+		assertTrue(recorder.awaitDlt("chain-abort", 40), "복구 후 DLT까지 가지 못했다")
+		Thread.sleep(3_000)
+
+		assertEquals(1, recorder.countDlt("chain-abort"), "abort된 홉이 중복을 남겼다")
+		// 커밋이 깨진 홉은 재처리되므로 그 토픽만 두 번 이상 보이고, 그 뒤 홉은 한 번씩만 보인다.
+		val hops = recorder.hopsFor("chain-abort")
+		assertEquals(1, hops.count { it == "eos-chain-retry-1" }, "abort 이후 홉이 중복됐다 → $hops")
+		assertEquals(1, hops.count { it == "eos-chain-dlt" }, "DLT 홉이 중복됐다 → $hops")
 	}
 }
