@@ -9,6 +9,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter'
 
 	testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
