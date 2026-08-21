@@ -32,7 +32,13 @@ import kotlin.reflect.KClass
 @RetryableTopic
 annotation class CustomRetryAndDLT(
 
-	/** 최초 시도를 포함한 총 처리 횟수. `@RetryableTopic.attempts` 별칭. */
+	/**
+	 * 재시도 토픽을 포함한 **총 시도 횟수**(최초 시도 포함). `@RetryableTopic.attempts` 별칭.
+	 *
+	 * `3`이면 최초 1회 + 재시도 2회다. `1`이면 재시도 토픽이 아예 만들어지지 않는다.
+	 * 재시도 "횟수"가 아니라 "총 횟수"인 것은 Spring Kafka 의미를 그대로 따른 것이다.
+	 * `@AliasFor`는 값 위임이라 중간에 +1 할 자리가 없고, 의미를 바꾸면 별칭 구조를 버려야 한다.
+	 */
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "attempts")
 	val attempts: String = "\${app.kafka.retry.attempts:3}",
 
@@ -128,6 +134,29 @@ annotation class CustomRetryAndDLT(
 	val concurrency: String = "",
 
 	// --- 여기부터는 @RetryableTopic에 없는 우리 확장 속성 ---
+
+	/**
+	 * 컨테이너 스레드에서 로컬로 처리할 **총 시도 횟수**(최초 시도 포함). [attempts]와 같은 셈법이다.
+	 *
+	 * `2`면 최초 1회 + 로컬 재시도 1회 = 총 2회. `3`이면 총 3회.
+	 * `1`이면 블로킹 재시도를 하지 않는다(기본값 — 명시적으로 켜야 스레드를 붙잡는다).
+	 *
+	 * 재시도 토픽을 만들지 않는 "블로킹 전용" 구성은 [attempts]를 `1`로 두고 이 값을 올려서 만든다.
+	 *
+	 * 주의: 블로킹 재시도는 컨슈머 스레드를 붙잡는다.
+	 * `blockingBackoffDelay * (blockingAttempts - 1)`이 `max.poll.interval.ms`(기본 5분)를 넘으면
+	 * 리밸런스로 파티션을 뺏긴다.
+	 */
+	val blockingAttempts: String = "\${app.kafka.retry.blocking-attempts:1}",
+
+	/** 블로킹 재시도 간 대기 시간(ms). 고정 간격이다. */
+	val blockingBackoffDelay: String = "\${app.kafka.retry.blocking-backoff-delay:500}",
+
+	/**
+	 * 블로킹 재시도 대상 예외. 비어 있으면 모든 예외가 대상이다.
+	 * 판정 시 cause 체인까지 훑는다. 리스너 예외는 `ListenerExecutionFailedException`으로 감싸여 오기 때문이다.
+	 */
+	val blockingRetryOn: Array<KClass<out Throwable>> = [],
 
 	/** 이 컨슈머의 담당 팀/채널. DLT 적재 시 누구에게 알릴지 판단하는 데 쓴다. */
 	val owner: String = "",

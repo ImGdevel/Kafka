@@ -132,7 +132,7 @@ class CustomRetryAndDLTChainTest {
 			assertTrue(alertOnDlt)
 			assertEquals(listOf("orders-dlt"), dltTopics)
 		}
-		with(assertNotNull(policyRegistry.findByDltTopic("audits-dlt"))) {
+		with(assertNotNull(policyRegistry.findByTopic("audits-dlt"))) {
 			assertEquals("audit-team", owner)
 			assertEquals(false, alertOnDlt)
 		}

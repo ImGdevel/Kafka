@@ -19,7 +19,7 @@ class DeadLetterNotifier(
 	private val log = LoggerFactory.getLogger(javaClass)
 
 	fun notifyDeadLetter(dltTopic: String, payload: Any?, reason: String? = null) {
-		val policy = registry.findByDltTopic(dltTopic)
+		val policy = registry.findByTopic(dltTopic)
 		if (policy == null) {
 			log.warn("DLT 정책을 찾지 못했다. 알림을 건너뛴다. topic={}", dltTopic)
 			return

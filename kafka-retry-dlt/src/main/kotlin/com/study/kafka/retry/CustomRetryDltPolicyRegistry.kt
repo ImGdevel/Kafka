@@ -7,10 +7,13 @@ import org.springframework.core.annotation.AnnotatedElementUtils
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.util.ClassUtils
 import org.springframework.util.ReflectionUtils
+import org.springframework.util.backoff.BackOff
+import org.springframework.util.backoff.FixedBackOff
+import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * `@CustomRetryAndDLT`가 붙은 리스너를 훑어 [CustomRetryDltPolicy]를 DLT 토픽 이름으로 색인한다.
+ * `@CustomRetryAndDLT`가 붙은 리스너를 훑어 [CustomRetryDltPolicy]를 토픽 이름으로 색인한다.
  *
  * `BeanPostProcessor`가 아니라 [SmartInitializingSingleton]인 이유:
  * BPP는 컨테이너 기동 아주 이른 시점에 만들어져 다른 빈을 주입받으면 auto-proxy 대상에서 빠지는 부작용이 있다.
@@ -26,28 +29,40 @@ class CustomRetryDltPolicyRegistry(
 ) : SmartInitializingSingleton {
 
 	private val log = LoggerFactory.getLogger(javaClass)
-	private val byDltTopic = ConcurrentHashMap<String, CustomRetryDltPolicy>()
+	private val byTopic = ConcurrentHashMap<String, CustomRetryDltPolicy>()
 
 	override fun afterSingletonsInstantiated() {
 		beanFactory.beanDefinitionNames.forEach { beanName ->
 			val type = runCatching { beanFactory.getType(beanName) }.getOrNull() ?: return@forEach
 			ReflectionUtils.doWithMethods(ClassUtils.getUserClass(type)) { method -> register(method) }
 		}
-		log.info("@CustomRetryAndDLT 정책 {}건 등록: {}", byDltTopic.size, byDltTopic.keys.sorted())
+		log.info("@CustomRetryAndDLT 정책 {}건 등록: {}", policies().size, byTopic.keys.sorted())
 	}
 
-	/** DLT 토픽 이름으로 정책을 찾는다. 정확히 일치하는 색인이 없으면 원본 토픽 접두사가 가장 긴 정책을 고른다. */
-	fun findByDltTopic(dltTopic: String): CustomRetryDltPolicy? =
-		byDltTopic[dltTopic] ?: byDltTopic.values
-			.filter { policy -> policy.topics.any { dltTopic.startsWith(it) } }
-			.maxByOrNull { policy -> policy.topics.filter { dltTopic.startsWith(it) }.maxOf { it.length } }
+	/**
+	 * 토픽 이름으로 정책을 찾는다.
+	 *
+	 * 원본/DLT 토픽은 색인에 그대로 들어 있고, 재시도 토픽(`orders-retry-0` 등)은 이름이 동적이라
+	 * 원본 토픽 접두사가 가장 긴 정책으로 되짚는다.
+	 */
+	fun findByTopic(topic: String): CustomRetryDltPolicy? =
+		byTopic[topic] ?: byTopic.values
+			.filter { policy -> policy.topics.any { topic.startsWith(it) } }
+			.maxByOrNull { policy -> policy.topics.filter { topic.startsWith(it) }.maxOf { it.length } }
 
 	fun findByOriginalTopic(topic: String): CustomRetryDltPolicy? =
-		byDltTopic.values.firstOrNull { topic in it.topics }
+		byTopic.values.firstOrNull { topic in it.topics }
 
-	fun policies(): List<CustomRetryDltPolicy> = byDltTopic.values.distinct()
+	fun policies(): List<CustomRetryDltPolicy> = byTopic.values.distinct()
 
-	private fun register(method: java.lang.reflect.Method) {
+	/**
+	 * `DefaultErrorHandler.setBackOffFunction`에 물릴 진입점.
+	 * 정책을 못 찾은 토픽이라도 `null`이 아니라 "재시도 0회"를 돌려준다.
+	 */
+	fun blockingBackOffFor(topic: String, exception: Throwable?): BackOff =
+		findByTopic(topic)?.blockingBackOffFor(exception) ?: NO_BLOCKING_RETRY
+
+	private fun register(method: Method) {
 		val annotation = CustomRetryDltAttributes.find(method) ?: return
 		val listener = AnnotatedElementUtils.findMergedAnnotation(method, KafkaListener::class.java) ?: return
 
@@ -57,15 +72,56 @@ class CustomRetryDltPolicyRegistry(
 			return
 		}
 
+		val listenerId = "${method.declaringClass.simpleName}#${method.name}"
+		val attempts = resolveInt(annotation.attempts, "attempts", listenerId)
+		val blockingAttempts = resolveInt(annotation.blockingAttempts, "blockingAttempts", listenerId) ?: 1
+		validate(attempts, blockingAttempts, listenerId)
+
 		val policy = CustomRetryDltPolicy(
 			topics = topics,
 			dltTopicSuffix = resolve(annotation.dltTopicSuffix),
 			owner = annotation.owner,
 			alertOnDlt = annotation.alertOnDlt,
-			listenerId = "${method.declaringClass.simpleName}#${method.name}",
+			attempts = attempts,
+			blockingAttempts = blockingAttempts,
+			blockingBackoffDelay = resolveInt(annotation.blockingBackoffDelay, "blockingBackoffDelay", listenerId)
+				?.toLong() ?: DEFAULT_BLOCKING_DELAY_MILLIS,
+			blockingRetryOn = annotation.blockingRetryOn.map { it.java },
+			listenerId = listenerId,
 		)
-		policy.dltTopics.forEach { byDltTopic[it] = policy }
+		policy.topics.forEach { byTopic[it] = policy }
+		policy.dltTopics.forEach { byTopic[it] = policy }
+	}
+
+	/**
+	 * 블로킹과 논블로킹을 동시에 켜면 총 시도 횟수가 두 값의 곱이 된다.
+	 * 의도한 사람보다 실수한 사람이 많을 조합이라 기동 시점에 막는다.
+	 */
+	private fun validate(attempts: Int?, blockingAttempts: Int, listenerId: String) {
+		require(blockingAttempts >= 1) {
+			"$listenerId: blockingAttempts는 1 이상이어야 한다. (현재 $blockingAttempts)"
+		}
+		if (attempts != null && attempts > 1 && blockingAttempts > 1) {
+			throw IllegalStateException(
+				"$listenerId: attempts=$attempts, blockingAttempts=$blockingAttempts 를 함께 쓰면 " +
+					"총 시도 횟수가 ${attempts * blockingAttempts}회가 된다. " +
+					"블로킹 전용이면 attempts=1, 논블로킹 전용이면 blockingAttempts=1로 둬라.",
+			)
+		}
 	}
 
 	private fun resolve(value: String): String = beanFactory.resolveEmbeddedValue(value) ?: value
+
+	private fun resolveInt(value: String, attribute: String, listenerId: String): Int? {
+		val resolved = resolve(value)
+		return resolved.toIntOrNull() ?: run {
+			log.warn("{}: {}=\"{}\" 를 숫자로 읽을 수 없어 검증을 건너뛴다.", listenerId, attribute, resolved)
+			null
+		}
+	}
+
+	companion object {
+		private const val DEFAULT_BLOCKING_DELAY_MILLIS = 500L
+		private val NO_BLOCKING_RETRY: BackOff = FixedBackOff(0L, 0L)
+	}
 }

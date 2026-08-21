@@ -6,18 +6,17 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
-import org.springframework.kafka.annotation.EnableKafkaRetryTopic
 import org.springframework.kafka.retrytopic.RetryTopicSchedulerWrapper
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 
 /**
  * 재시도 체인 검증 전용 부트 애플리케이션.
  *
- * `@EnableKafkaRetryTopic`이 없으면 `@RetryableTopic`(및 이를 감싼 `@CustomRetryAndDLT`)을
- * 처리할 `RetryTopicConfigurer` 인프라가 등록되지 않아 재시도 토픽이 만들어지지 않는다.
+ * 재시도 토픽 인프라는 `CustomRetryDltConfiguration`이 함께 들여오는 `CustomRetryTopicConfiguration`이 등록한다.
+ * `@EnableKafkaRetryTopic`을 같이 붙이면 `RetryTopicConfigurationSupport` 빈이 두 개가 되어 경고만 남고
+ * 조용히 잘못 동작하므로 붙이지 않는다.
  */
 @SpringBootApplication
-@EnableKafkaRetryTopic
 @Import(CustomRetryDltConfiguration::class)
 class RetryChainTestApplication {
 
