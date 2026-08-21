@@ -143,13 +143,23 @@ annotation class CustomRetryAndDLT(
 	 *
 	 * 재시도 토픽을 만들지 않는 "블로킹 전용" 구성은 [attempts]를 `1`로 두고 이 값을 올려서 만든다.
 	 *
-	 * 주의: 블로킹 재시도는 컨슈머 스레드를 붙잡는다.
-	 * `blockingBackoffDelay * (blockingAttempts - 1)`이 `max.poll.interval.ms`(기본 5분)를 넘으면
-	 * 리밸런스로 파티션을 뺏긴다.
+	 * 주의: 블로킹 재시도는 컨슈머 스레드를 붙잡는다. 다만 상한과 비교할 값은 전체 블로킹 구간이 아니라
+	 * [blockingBackoffDelay] 하나다. 시도마다 롤백 후 재폴링이 일어나기 때문에 시도 사이에 poll()이 돈다.
+	 * 자세한 근거는 [blockingBackoffDelay] 문서를 봐라.
 	 */
 	val blockingAttempts: String = "\${app.kafka.retry.blocking-attempts:1}",
 
-	/** 블로킹 재시도 간 대기 시간(ms). 고정 간격이다. */
+	/**
+	 * 블로킹 재시도 간 대기 시간(ms). 고정 간격이다.
+	 *
+	 * 이 값 **하나**가 `max.poll.interval.ms`를 넘으면 안 된다. 넘기면 매 재시도마다
+	 * `consumer poll timeout has expired`로 컨슈머가 그룹에서 쫓겨난다.
+	 *
+	 * 반대로 `blockingBackoffDelay * (blockingAttempts - 1)`, 즉 전체 블로킹 구간이 상한을 넘는 것은
+	 * 문제가 되지 않는다. 블로킹 재시도는 백오프 동안 트랜잭션이나 poll 루프를 붙잡고 있는 것이 아니라
+	 * 시도마다 롤백 후 다시 폴링하는 구조라서, 시도와 시도 사이에 poll()이 정상적으로 호출된다.
+	 * (검증: `BlockingRetryPollIntervalTest`)
+	 */
 	val blockingBackoffDelay: String = "\${app.kafka.retry.blocking-backoff-delay:500}",
 
 	/**

@@ -28,8 +28,10 @@ import org.springframework.context.annotation.Import
 class CustomRetryDltConfiguration {
 
 	@Bean
-	fun customRetryDltPolicyRegistry(beanFactory: ConfigurableListableBeanFactory) =
-		CustomRetryDltPolicyRegistry(beanFactory)
+	fun customRetryDltPolicyRegistry(
+		beanFactory: ConfigurableListableBeanFactory,
+		consumerFactory: ObjectProvider<ConsumerFactory<*, *>>,
+	) = CustomRetryDltPolicyRegistry(beanFactory, consumerFactory)
 
 	@Bean
 	fun loggingDeadLetterAlerter(): DeadLetterAlerter = LoggingDeadLetterAlerter()

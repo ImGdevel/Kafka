@@ -2,9 +2,12 @@ package com.study.kafka.retry
 
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.SmartInitializingSingleton
+import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory
 import org.springframework.core.annotation.AnnotatedElementUtils
 import org.springframework.kafka.annotation.KafkaListener
+import org.springframework.kafka.core.ConsumerFactory
 import org.springframework.util.ClassUtils
 import org.springframework.util.ReflectionUtils
 import org.springframework.util.backoff.BackOff
@@ -26,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class CustomRetryDltPolicyRegistry(
 	private val beanFactory: ConfigurableListableBeanFactory,
+	private val consumerFactory: ObjectProvider<ConsumerFactory<*, *>>? = null,
 ) : SmartInitializingSingleton {
 
 	private val log = LoggerFactory.getLogger(javaClass)
@@ -87,8 +91,10 @@ class CustomRetryDltPolicyRegistry(
 			blockingBackoffDelay = resolveInt(annotation.blockingBackoffDelay, "blockingBackoffDelay", listenerId)
 				?.toLong() ?: DEFAULT_BLOCKING_DELAY_MILLIS,
 			blockingRetryOn = annotation.blockingRetryOn.map { it.java },
+			dltStrategy = annotation.dltStrategy,
 			listenerId = listenerId,
 		)
+		warnIfRisky(policy)
 		policy.topics.forEach { byTopic[it] = policy }
 		policy.dltTopics.forEach { byTopic[it] = policy }
 	}
@@ -110,6 +116,43 @@ class CustomRetryDltPolicyRegistry(
 		}
 	}
 
+	/**
+	 * 기동을 막지는 않지만 조용히 넘기면 안 되는 조합들.
+	 *
+	 * 둘 다 프레임워크가 허용하는 정상 설정이라 예외로 막을 근거는 없다.
+	 * 다만 증상이 늦게, 그리고 엉뚱한 모습으로 나타나기 때문에 기동 시점에 이름과 함께 남긴다.
+	 */
+	private fun warnIfRisky(policy: CustomRetryDltPolicy) {
+		if (policy.discardsExhaustedMessages) {
+			log.warn(
+				"{}: dltStrategy=NO_DLT 이므로 재시도가 소진되면 메시지가 어디에도 남지 않고 폐기된다. topics={}",
+				policy.listenerId,
+				policy.topics,
+			)
+		}
+
+		val maxPollInterval = maxPollIntervalMillis()
+		if (policy.blockingAttempts > 1 && policy.blockingBackoffDelay >= maxPollInterval) {
+			log.warn(
+				"{}: blockingBackoffDelay={}ms 가 max.poll.interval.ms={}ms 이상이다. " +
+					"재시도마다 'consumer poll timeout has expired'로 컨슈머가 그룹에서 이탈한다. " +
+					"참고로 전체 블로킹 구간(delay x (attempts-1))은 상한을 넘어도 무방하다. " +
+					"시도 사이에 poll()이 돌기 때문이다.",
+				policy.listenerId,
+				policy.blockingBackoffDelay,
+				maxPollInterval,
+			)
+		}
+	}
+
+	private fun maxPollIntervalMillis(): Long =
+		consumerFactory?.ifAvailable
+			?.configurationProperties
+			?.get(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG)
+			?.toString()
+			?.toLongOrNull()
+			?: DEFAULT_MAX_POLL_INTERVAL_MILLIS
+
 	private fun resolve(value: String): String = beanFactory.resolveEmbeddedValue(value) ?: value
 
 	private fun resolveInt(value: String, attribute: String, listenerId: String): Int? {
@@ -122,6 +165,9 @@ class CustomRetryDltPolicyRegistry(
 
 	companion object {
 		private const val DEFAULT_BLOCKING_DELAY_MILLIS = 500L
+
+		/** Kafka 기본값. 컨슈머 설정에서 읽지 못했을 때 쓴다. */
+		private const val DEFAULT_MAX_POLL_INTERVAL_MILLIS = 300_000L
 		private val NO_BLOCKING_RETRY: BackOff = FixedBackOff(0L, 0L)
 	}
 }

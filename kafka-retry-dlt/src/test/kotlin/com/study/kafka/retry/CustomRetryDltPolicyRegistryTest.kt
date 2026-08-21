@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.support.DefaultListableBeanFactory
 import org.springframework.beans.factory.support.RootBeanDefinition
 import org.springframework.kafka.annotation.KafkaListener
+import org.springframework.kafka.retrytopic.DltStrategy
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -22,6 +24,12 @@ class CustomRetryDltPolicyRegistryTest {
 	class ValidBlockingListener {
 		@CustomRetryAndDLT(attempts = "1", blockingAttempts = "3", blockingBackoffDelay = "50", dltTopicSuffix = "-dlt")
 		@KafkaListener(topics = ["valid"])
+		fun handle() = Unit
+	}
+
+	class NoDltListener {
+		@CustomRetryAndDLT(attempts = "2", dltStrategy = DltStrategy.NO_DLT, dltTopicSuffix = "-dlt")
+		@KafkaListener(topics = ["discarding"])
 		fun handle() = Unit
 	}
 
@@ -76,5 +84,14 @@ class CustomRetryDltPolicyRegistryTest {
 			failure.message?.contains("총 시도 횟수가 9회") == true,
 			"곱해진 시도 횟수를 알려주지 않는다: ${failure.message}",
 		)
+	}
+
+	@Test
+	@DisplayName("NO_DLT는 재시도 소진 후 메시지가 폐기되는 구성으로 표시된다")
+	fun `no dlt policy is marked as discarding`() {
+		val registry = scan(NoDltListener::class.java, ValidBlockingListener::class.java)
+
+		assertTrue(assertNotNull(registry.findByTopic("discarding")).discardsExhaustedMessages)
+		assertFalse(assertNotNull(registry.findByTopic("valid")).discardsExhaustedMessages)
 	}
 }

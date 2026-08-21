@@ -1,5 +1,6 @@
 package com.study.kafka.retry
 
+import org.springframework.kafka.retrytopic.DltStrategy
 import org.springframework.util.backoff.BackOff
 import org.springframework.util.backoff.FixedBackOff
 
@@ -14,6 +15,7 @@ import org.springframework.util.backoff.FixedBackOff
  * @param blockingAttempts 로컬 스레드 총 처리 횟수. 1이면 블로킹 재시도 없음
  * @param blockingBackoffDelay 블로킹 재시도 간 고정 대기(ms)
  * @param blockingRetryOn 블로킹 대상 예외. 비어 있으면 전부
+ * @param dltStrategy DLT 처리 전략. `NO_DLT`면 재시도 소진 후 메시지가 폐기된다
  * @param listenerId 로그 추적용 `클래스#메서드` 문자열
  */
 data class CustomRetryDltPolicy(
@@ -25,8 +27,12 @@ data class CustomRetryDltPolicy(
 	val blockingAttempts: Int,
 	val blockingBackoffDelay: Long,
 	val blockingRetryOn: List<Class<out Throwable>>,
+	val dltStrategy: DltStrategy,
 	val listenerId: String,
 ) {
+
+	/** 재시도가 소진되면 메시지가 어디에도 남지 않고 사라지는 구성인지. */
+	val discardsExhaustedMessages: Boolean = dltStrategy == DltStrategy.NO_DLT
 	val dltTopics: List<String> = topics.map { it + dltTopicSuffix }
 
 	/** 블로킹 재시도를 하지 않을 때 쓰는 BackOff. `null`을 돌려주면 안 되므로 명시적으로 0회를 쓴다. */

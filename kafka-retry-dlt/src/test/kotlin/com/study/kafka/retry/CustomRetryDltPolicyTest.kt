@@ -2,6 +2,7 @@ package com.study.kafka.retry
 
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.springframework.kafka.retrytopic.DltStrategy
 import org.springframework.util.backoff.FixedBackOff
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -29,6 +30,7 @@ class CustomRetryDltPolicyTest {
 		blockingAttempts = blockingAttempts,
 		blockingBackoffDelay = blockingBackoffDelay,
 		blockingRetryOn = blockingRetryOn,
+		dltStrategy = DltStrategy.FAIL_ON_ERROR,
 		listenerId = "Listener#handle",
 	)
 
