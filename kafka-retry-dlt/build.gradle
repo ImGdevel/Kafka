@@ -1,0 +1,19 @@
+plugins {
+	id 'org.jetbrains.kotlin.jvm'
+	id 'org.jetbrains.kotlin.plugin.spring'
+	id 'java-library'
+}
+
+dependencies {
+	api 'org.springframework.kafka:spring-kafka'
+	implementation 'org.springframework.boot:spring-boot-starter'
+
+	testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+	compilerOptions {
+		freeCompilerArgs.add('-Xjsr305=strict')
+	}
+}
