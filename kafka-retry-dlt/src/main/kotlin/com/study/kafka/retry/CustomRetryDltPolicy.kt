@@ -16,6 +16,7 @@ import org.springframework.util.backoff.FixedBackOff
  * @param blockingBackoffDelay 블로킹 재시도 간 고정 대기(ms)
  * @param blockingRetryOn 블로킹 대상 예외. 비어 있으면 전부
  * @param dltStrategy DLT 처리 전략. `NO_DLT`면 재시도 소진 후 메시지가 폐기된다
+ * @param autoCreateTopics 재시도/DLT 토픽을 Spring이 만들지 여부. false면 미리 만들어져 있어야 한다
  * @param listenerId 로그 추적용 `클래스#메서드` 문자열
  */
 data class CustomRetryDltPolicy(
@@ -28,6 +29,7 @@ data class CustomRetryDltPolicy(
 	val blockingBackoffDelay: Long,
 	val blockingRetryOn: List<Class<out Throwable>>,
 	val dltStrategy: DltStrategy,
+	val autoCreateTopics: Boolean,
 	val listenerId: String,
 ) {
 

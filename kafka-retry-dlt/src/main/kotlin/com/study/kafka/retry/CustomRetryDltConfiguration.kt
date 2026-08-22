@@ -2,7 +2,9 @@ package com.study.kafka.retry
 
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry
 import org.springframework.kafka.core.ConsumerFactory
+import org.springframework.kafka.core.KafkaAdmin
 import org.springframework.kafka.core.KafkaOperations
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -39,6 +41,13 @@ class CustomRetryDltConfiguration {
 	@Bean
 	fun deadLetterNotifier(registry: CustomRetryDltPolicyRegistry, alerter: DeadLetterAlerter) =
 		DeadLetterNotifier(registry, alerter)
+
+	@Bean
+	fun retryTopicPresenceValidator(
+		policyRegistry: CustomRetryDltPolicyRegistry,
+		endpointRegistry: ObjectProvider<KafkaListenerEndpointRegistry>,
+		kafkaAdmin: ObjectProvider<KafkaAdmin>,
+	) = RetryTopicPresenceValidator(policyRegistry, endpointRegistry, kafkaAdmin)
 
 	@Bean
 	fun dltTransactionInspector(

@@ -62,32 +62,6 @@ private fun alwaysFail(payload: String, topic: String, recorder: TopicPresenceRe
 }
 
 /**
- * 논블로킹인데 재시도 토픽이 브로커에 없는 리스너.
- *
- * `autoCreateTopics=false`라서 Spring이 만들지 않고, 브로커 자동 생성도 꺼져 있다.
- * 운영에서는 토픽 생성 권한이 없거나 누가 지웠을 때 이 상태가 된다.
- */
-@Component
-class MissingRetryTopicListener(private val recorder: TopicPresenceRecorder) {
-
-	@CustomRetryAndDLT(attempts = "3", autoCreateTopics = "false")
-	@KafkaListener(id = LISTENER_ID, topics = [TOPIC], groupId = "g-presence-missing")
-	fun handle(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String): Unit =
-		alwaysFail(payload, topic, recorder)
-
-	@DltHandler
-	fun dlt(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String) {
-		log.info("DLT 수신 topic={} payload={}", topic, payload)
-		recorder.record(payload, topic)
-	}
-
-	companion object {
-		const val TOPIC = "presence-missing"
-		const val LISTENER_ID = "presence-missing-listener"
-	}
-}
-
-/**
  * 블로킹 전용인데 예전 논블로킹 설정이 남긴 재시도 토픽이 브로커에 그대로 있는 리스너.
  *
  * `attempts=1`이므로 목적지 체인은 원본과 DLT뿐이다. 남아 있는 재시도 토픽은 체인에 없다.

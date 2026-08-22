@@ -92,6 +92,7 @@ class CustomRetryDltPolicyRegistry(
 				?.toLong() ?: DEFAULT_BLOCKING_DELAY_MILLIS,
 			blockingRetryOn = annotation.blockingRetryOn.map { it.java },
 			dltStrategy = annotation.dltStrategy,
+			autoCreateTopics = resolveBoolean(annotation.autoCreateTopics, "autoCreateTopics", listenerId),
 			listenerId = listenerId,
 		)
 		warnIfRisky(policy)
@@ -154,6 +155,15 @@ class CustomRetryDltPolicyRegistry(
 			?: DEFAULT_MAX_POLL_INTERVAL_MILLIS
 
 	private fun resolve(value: String): String = beanFactory.resolveEmbeddedValue(value) ?: value
+
+	/** 읽을 수 없으면 `@RetryableTopic` 기본값과 같은 true 로 본다. 검사를 덜 하는 쪽이 안전하다. */
+	private fun resolveBoolean(value: String, attribute: String, listenerId: String): Boolean {
+		val resolved = resolve(value)
+		return resolved.trim().lowercase().toBooleanStrictOrNull() ?: run {
+			log.warn("{}: {}=\"{}\" 를 boolean 으로 읽을 수 없어 true 로 본다.", listenerId, attribute, resolved)
+			true
+		}
+	}
 
 	private fun resolveInt(value: String, attribute: String, listenerId: String): Int? {
 		val resolved = resolve(value)

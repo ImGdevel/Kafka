@@ -31,6 +31,7 @@ class CustomRetryDltPolicyTest {
 		blockingBackoffDelay = blockingBackoffDelay,
 		blockingRetryOn = blockingRetryOn,
 		dltStrategy = DltStrategy.FAIL_ON_ERROR,
+		autoCreateTopics = true,
 		listenerId = "Listener#handle",
 	)
 
