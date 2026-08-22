@@ -91,25 +91,37 @@ flowchart TD
 
 `recoverer`가 `DeadLetterPublishingRecoverer`이고, 목적지는 `DestinationTopicResolver`가 정한다. 그래서 **"recover"가 곧 DLT는 아니다** — 다음 홉일 수도 있다.
 
+**둘 중 하나만 고르는 것이 설계다.** `attempts`와 `blockingAttempts`를 둘 다 1보다 크게 두면 안 된다 — 뒤에서 보듯 시도 횟수가 곱해진다. 그래서 경로도 하나가 아니라 둘이다.
+
+### 3-1. 블로킹 전용 (`attempts=1`)
+
+재시도 토픽을 만들지 않는다. 실패하면 원본 토픽 안에서 로컬로 반복한다.
+
 ```mermaid
 flowchart LR
-    subgraph MAIN["원본 토픽 orders"]
-        M1["시도 1"] --> M2["시도 2"] --> M3["시도 3"]
+    subgraph MAIN["원본 토픽 orders (attempts=1)"]
+        M1["시도 1"] --> M2["시도 2"] --> M3["시도 N"]
     end
 
-    M3 -->|"블로킹 소진<br/>recoverer 호출"| R0
+    M3 -->|"블로킹 소진<br/>recoverer 호출"| DLT["orders.dlt"]
+    DLT --> H["@DltHandler"]
+```
+
+### 3-2. 논블로킹 전용 (`blockingAttempts=1`, 기본값)
+
+로컬 반복 없이 매 시도가 다음 재시도 토픽으로 넘어간다.
+
+```mermaid
+flowchart LR
+    M["orders<br/>(1회)"] -->|"실패<br/>recoverer 호출"| R0
 
     subgraph NB["논블로킹 체인 (attempts로 결정)"]
-        R0["orders.retry-0"] --> R1["orders.retry-1"]
+        R0["orders.retry-0<br/>(1회)"] --> R1["orders.retry-1<br/>(1회)"]
     end
 
     R1 -->|"체인 소진"| DLT["orders.dlt"]
     DLT --> H["@DltHandler"]
-
-    M3 -.->|"attempts=1 이면<br/>재시도 토픽 없음"| DLT
 ```
-
-**두 축이 독립적으로 조합된다**
 
 | 구성 | `attempts` | `blockingAttempts` | 경로 |
 |---|---|---|---|
@@ -117,9 +129,28 @@ flowchart LR
 | 논블로킹 전용 | `N` | `1` (기본) | 원본 → retry 토픽들 → DLT |
 | DLT 없음 | — | — | `dltStrategy = NO_DLT` → 소진 후 폐기 |
 
-`attempts`와 `blockingAttempts`를 동시에 1보다 크게 두면 총 시도 횟수가 두 값의 **곱**이 된다. 실수하기 쉬운 조합이라 기동 시점에 막는다.
-
 > 두 값 모두 "총 시도 횟수"다. `2`면 최초 1회 + 재시도 1회다. Spring Kafka의 `attempts` 의미를 그대로 따랐다.
+
+### 두 축을 동시에 켜면 (금지된 조합, 실측)
+
+`attempts`와 `blockingAttempts`를 동시에 1보다 크게 두면 **홉마다 블로킹이 다시 걸린다.** 재시도 토픽도 결국 하나의 토픽이고, 거기서 실패해도 같은 `backOffFunction`이 다시 적용되기 때문이다.
+
+`@CustomRetryAndDLT`는 이 조합을 기동 시점에 막는다. 그 가드가 왜 필요한지 근거를 남기려고, 가드가 없는 Spring 순정 `@RetryableTopic` + 전역 블로킹 설정으로 같은 조합을 직접 구성해 재현했다(`RetryAttemptsMultiplyTest`). `attempts=3` + 전역 블로킹 3회:
+
+```
+multiply-orders          × 3
+multiply-orders-retry-100 × 3
+multiply-orders-retry-200 × 3
+multiply-orders-dlt       × 1
+```
+
+**비즈니스 로직이 9회(3 × 3) 실행됐다.** 홉 수와 블로킹 횟수의 곱이다. `@CustomRetryAndDLT`를 쓰면 이 상태 자체에 도달할 수 없다:
+
+```
+Listener#handle: attempts=3, blockingAttempts=3 를 함께 쓰면
+총 시도 횟수가 9회가 된다.
+블로킹 전용이면 attempts=1, 논블로킹 전용이면 blockingAttempts=1로 둬라.
+```
 
 ---
 
@@ -201,6 +232,7 @@ spring.kafka.consumer.isolation-level: read-committed
 | 메타 애노테이션이 `@RetryableTopic`으로 인식된다 | `CustomRetryAndDLTTest` |
 | 재시도 체인이 실제로 돈다 | `CustomRetryAndDLTChainTest` |
 | 블로킹/논블로킹 × DLT 유무 4분면 | `RetryModeMatrixTest` |
+| 두 축을 동시에 켜면 시도 횟수가 곱해진다 (금지된 조합) | `RetryAttemptsMultiplyTest` |
 | 블로킹 BackOff 선택 규칙, null 미반환 | `CustomRetryDltPolicyTest` |
 | 발행 후 커밋 실패 → 중복 (at-least-once) | `DltPublishThenCommitFailTest` |
 | 발행 실패 → 유실 없이 정체 | `DltPublishFailTest` |
