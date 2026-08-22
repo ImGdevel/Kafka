@@ -1,10 +1,12 @@
+
 rootProject.name = 'kafka'
 
 include 'infra-message-queue'
 include 'kafka-study'
 include 'kafka-connect'
-include 'kafka-redis-compare'
 include 'kafka-retry-dlt'
+include 'kafka-transaction'
+include 'kafka-redis-compare'
 include 'kafka-notification:notification-domain'
 include 'kafka-notification:notification-contract'
 include 'kafka-notification:notification-provider-sandbox'
