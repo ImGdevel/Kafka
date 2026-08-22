@@ -122,3 +122,59 @@ class BlockingWithoutRetryTopicListener(private val recorder: TopicPresenceRecor
 		const val BLOCKING_ATTEMPTS = 3
 	}
 }
+
+/**
+ * 논블로킹인데 재시도 토픽과 DLT를 미리 만들어 둔 리스너.
+ *
+ * `autoCreateTopics=false`로 운영하는 정상적인 모습이다. 기동 검사를 통과하고 체인도 정상 동작해야 한다.
+ */
+@Component
+class NonBlockingPresentTopicsListener(private val recorder: TopicPresenceRecorder) {
+
+	@CustomRetryAndDLT(attempts = "3", autoCreateTopics = "false")
+	@KafkaListener(id = LISTENER_ID, topics = [TOPIC], groupId = "g-presence-ok")
+	fun handle(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String): Unit =
+		alwaysFail(payload, topic, recorder)
+
+	@DltHandler
+	fun dlt(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String) {
+		log.info("DLT 수신 topic={} payload={}", topic, payload)
+		recorder.record(payload, topic)
+	}
+
+	companion object {
+		const val TOPIC = "presence-ok"
+		const val RETRY_0 = "presence-ok-retry-0"
+		const val RETRY_1 = "presence-ok-retry-1"
+		const val DLT_TOPIC = "presence-ok-dlt"
+		const val LISTENER_ID = "presence-ok-listener"
+	}
+}
+
+/**
+ * 기동 후 토픽을 지워 검사기가 무엇을 잡아내는지 확인하기 위한 리스너.
+ *
+ * 다른 테스트가 쓰는 토픽을 지우면 서로 간섭하므로 전용으로 하나 둔다.
+ * `attempts=2`라 재시도 토픽은 하나이고, 간격 재사용 전략 기본값에 따라 인덱스가 붙지 않는다.
+ */
+@Component
+class DeletableTopicsListener(private val recorder: TopicPresenceRecorder) {
+
+	@CustomRetryAndDLT(attempts = "2", autoCreateTopics = "false")
+	@KafkaListener(id = LISTENER_ID, topics = [TOPIC], groupId = "g-presence-del")
+	fun handle(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String): Unit =
+		alwaysFail(payload, topic, recorder)
+
+	@DltHandler
+	fun dlt(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String) {
+		log.info("DLT 수신 topic={} payload={}", topic, payload)
+		recorder.record(payload, topic)
+	}
+
+	companion object {
+		const val TOPIC = "presence-del"
+		const val RETRY_TOPIC = "presence-del-retry"
+		const val DLT_TOPIC = "presence-del-dlt"
+		const val LISTENER_ID = "presence-del-listener"
+	}
+}
