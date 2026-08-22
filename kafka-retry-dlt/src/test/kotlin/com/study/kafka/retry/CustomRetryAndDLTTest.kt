@@ -64,8 +64,8 @@ class CustomRetryAndDLTTest {
 		val annotation = assertNotNull(retryableTopicOf(DefaultsListener::class.java))
 
 		assertEquals("\${app.kafka.retry.attempts:3}", annotation.attempts)
-		assertEquals("\${app.kafka.retry.retry-topic-suffix:-retry}", annotation.retryTopicSuffix)
-		assertEquals("\${app.kafka.retry.dlt-topic-suffix:-dlt}", annotation.dltTopicSuffix)
+		assertEquals("\${app.kafka.retry.retry-topic-suffix:.retry}", annotation.retryTopicSuffix)
+		assertEquals("\${app.kafka.retry.dlt-topic-suffix:.dlt}", annotation.dltTopicSuffix)
 		assertEquals("\${app.kafka.retry.backoff.delay:1000}", annotation.backoff.delayExpression)
 		assertEquals("\${app.kafka.retry.backoff.multiplier:2.0}", annotation.backoff.multiplierExpression)
 		assertEquals("\${app.kafka.retry.backoff.max-delay:10000}", annotation.backoff.maxDelayExpression)
@@ -85,7 +85,7 @@ class CustomRetryAndDLTTest {
 		assertEquals(1, annotation.exclude.size)
 		assertEquals<KClass<*>>(IllegalArgumentException::class, annotation.exclude[0])
 		// 지정하지 않은 속성은 우리 기본값을 유지한다
-		assertEquals("\${app.kafka.retry.retry-topic-suffix:-retry}", annotation.retryTopicSuffix)
+		assertEquals("\${app.kafka.retry.retry-topic-suffix:.retry}", annotation.retryTopicSuffix)
 	}
 
 	@Test

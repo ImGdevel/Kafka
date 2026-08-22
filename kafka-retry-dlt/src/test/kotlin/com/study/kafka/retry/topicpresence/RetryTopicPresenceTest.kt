@@ -58,6 +58,7 @@ import kotlin.test.assertTrue
 		// 블로킹 전용으로 바뀌면서 쓸모없어진 재시도 토픽이 남아 있는 상황
 		StaleRetryTopicListener.TOPIC,
 		StaleRetryTopicListener.STALE_RETRY_TOPIC,
+		StaleRetryTopicListener.DLT_TOPIC,
 	],
 	brokerProperties = ["auto.create.topics.enable=false"],
 )
@@ -238,11 +239,11 @@ class RetryTopicPresenceTest {
 		val message = generateSequence(failure) { it.cause }.mapNotNull { it.message }.joinToString(separator = " | ")
 		assertTrue(message.contains("autoCreateTopics=false"), "검사기가 낸 실패가 아니다 → $message")
 		assertTrue(
-			message.contains("${StartupFailListener.TOPIC}-retry-0"),
+			message.contains("${StartupFailListener.TOPIC}.retry-0"),
 			"없는 재시도 토픽을 알려주지 않는다 → $message",
 		)
 		assertTrue(
-			message.contains("${StartupFailListener.TOPIC}-dlt"),
+			message.contains("${StartupFailListener.TOPIC}.dlt"),
 			"없는 DLT 토픽을 알려주지 않는다 → $message",
 		)
 	}

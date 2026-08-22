@@ -36,6 +36,7 @@ import kotlin.test.assertTrue
 		"spring.kafka.consumer.auto-offset-reset=earliest",
 		"spring.kafka.consumer.isolation-level=read-committed",
 		"spring.kafka.producer.transaction-id-prefix=eos-tx-",
+		"app.kafka.retry.auto-create-topics=true",
 		"app.kafka.retry.replication-factor=1",
 	],
 )
@@ -143,7 +144,7 @@ class DltPublishEosTest {
 		Thread.sleep(2_000)
 
 		assertEquals(
-			listOf("eos-chain", "eos-chain-retry-0", "eos-chain-retry-1", "eos-chain-dlt"),
+			listOf("eos-chain", "eos-chain.retry-0", "eos-chain.retry-1", "eos-chain.dlt"),
 			recorder.hopsFor("chain-tx"),
 		)
 		assertEquals(1, recorder.countDlt("chain-tx"), "홉마다 커밋되므로 중복이 없어야 한다")
@@ -166,7 +167,7 @@ class DltPublishEosTest {
 		assertEquals(1, recorder.countDlt("chain-abort"), "abort된 홉이 중복을 남겼다")
 		// 커밋이 깨진 홉은 재처리되므로 그 토픽만 두 번 이상 보이고, 그 뒤 홉은 한 번씩만 보인다.
 		val hops = recorder.hopsFor("chain-abort")
-		assertEquals(1, hops.count { it == "eos-chain-retry-1" }, "abort 이후 홉이 중복됐다 → $hops")
-		assertEquals(1, hops.count { it == "eos-chain-dlt" }, "DLT 홉이 중복됐다 → $hops")
+		assertEquals(1, hops.count { it == "eos-chain.retry-1" }, "abort 이후 홉이 중복됐다 → $hops")
+		assertEquals(1, hops.count { it == "eos-chain.dlt" }, "DLT 홉이 중복됐다 → $hops")
 	}
 }

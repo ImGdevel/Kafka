@@ -82,8 +82,8 @@ class StaleRetryTopicListener(private val recorder: TopicPresenceRecorder) {
 
 	companion object {
 		const val TOPIC = "presence-stale"
-		const val STALE_RETRY_TOPIC = "presence-stale-retry-0"
-		const val DLT_TOPIC = "presence-stale-dlt"
+		const val STALE_RETRY_TOPIC = "presence-stale.retry-0"
+		const val DLT_TOPIC = "presence-stale.dlt"
 		const val LISTENER_ID = "presence-stale-listener"
 		const val BLOCKING_ATTEMPTS = 3
 	}
@@ -117,7 +117,7 @@ class BlockingWithoutRetryTopicListener(private val recorder: TopicPresenceRecor
 
 	companion object {
 		const val TOPIC = "presence-blocking"
-		const val DLT_TOPIC = "presence-blocking-dlt"
+		const val DLT_TOPIC = "presence-blocking.dlt"
 		const val LISTENER_ID = "presence-blocking-listener"
 		const val BLOCKING_ATTEMPTS = 3
 	}
@@ -144,9 +144,9 @@ class NonBlockingPresentTopicsListener(private val recorder: TopicPresenceRecord
 
 	companion object {
 		const val TOPIC = "presence-ok"
-		const val RETRY_0 = "presence-ok-retry-0"
-		const val RETRY_1 = "presence-ok-retry-1"
-		const val DLT_TOPIC = "presence-ok-dlt"
+		const val RETRY_0 = "presence-ok.retry-0"
+		const val RETRY_1 = "presence-ok.retry-1"
+		const val DLT_TOPIC = "presence-ok.dlt"
 		const val LISTENER_ID = "presence-ok-listener"
 	}
 }
@@ -173,8 +173,8 @@ class DeletableTopicsListener(private val recorder: TopicPresenceRecorder) {
 
 	companion object {
 		const val TOPIC = "presence-del"
-		const val RETRY_TOPIC = "presence-del-retry"
-		const val DLT_TOPIC = "presence-del-dlt"
+		const val RETRY_TOPIC = "presence-del.retry"
+		const val DLT_TOPIC = "presence-del.dlt"
 		const val LISTENER_ID = "presence-del-listener"
 	}
 }

@@ -33,6 +33,7 @@ import kotlin.test.assertTrue
 	properties = [
 		"spring.kafka.bootstrap-servers=\${spring.embedded.kafka.brokers}",
 		"spring.kafka.consumer.auto-offset-reset=earliest",
+		"app.kafka.retry.auto-create-topics=true",
 		"app.kafka.retry.replication-factor=1",
 	],
 )

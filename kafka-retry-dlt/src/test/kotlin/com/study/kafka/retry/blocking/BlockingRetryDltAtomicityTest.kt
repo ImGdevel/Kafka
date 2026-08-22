@@ -30,6 +30,7 @@ import kotlin.test.assertTrue
 		"spring.kafka.consumer.auto-offset-reset=earliest",
 		"spring.kafka.consumer.isolation-level=read-committed",
 		"spring.kafka.producer.transaction-id-prefix=blk-tx-",
+		"app.kafka.retry.auto-create-topics=true",
 		"app.kafka.retry.replication-factor=1",
 	],
 )

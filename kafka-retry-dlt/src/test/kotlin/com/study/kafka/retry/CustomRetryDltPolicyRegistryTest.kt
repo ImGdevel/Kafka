@@ -22,19 +22,19 @@ import kotlin.test.assertTrue
 class CustomRetryDltPolicyRegistryTest {
 
 	class ValidBlockingListener {
-		@CustomRetryAndDLT(attempts = "1", blockingAttempts = "3", blockingBackoffDelay = "50", dltTopicSuffix = "-dlt")
+		@CustomRetryAndDLT(attempts = "1", blockingAttempts = "3", blockingBackoffDelay = "50", dltTopicSuffix = ".dlt")
 		@KafkaListener(topics = ["valid"])
 		fun handle() = Unit
 	}
 
 	class NoDltListener {
-		@CustomRetryAndDLT(attempts = "2", dltStrategy = DltStrategy.NO_DLT, dltTopicSuffix = "-dlt")
+		@CustomRetryAndDLT(attempts = "2", dltStrategy = DltStrategy.NO_DLT, dltTopicSuffix = ".dlt")
 		@KafkaListener(topics = ["discarding"])
 		fun handle() = Unit
 	}
 
 	class BothRetryModesListener {
-		@CustomRetryAndDLT(attempts = "3", blockingAttempts = "3", dltTopicSuffix = "-dlt")
+		@CustomRetryAndDLT(attempts = "3", blockingAttempts = "3", dltTopicSuffix = ".dlt")
 		@KafkaListener(topics = ["conflict"])
 		fun handle() = Unit
 	}
@@ -56,7 +56,7 @@ class CustomRetryDltPolicyRegistryTest {
 			assertEquals(50L, blockingBackoffDelay)
 			assertEquals(1, attempts)
 		}
-		assertNotNull(registry.findByTopic("valid-dlt"))
+		assertNotNull(registry.findByTopic("valid.dlt"))
 	}
 
 	@Test
@@ -64,7 +64,7 @@ class CustomRetryDltPolicyRegistryTest {
 	fun `retry topic falls back to prefix match`() {
 		val registry = scan(ValidBlockingListener::class.java)
 
-		assertEquals("valid", assertNotNull(registry.findByTopic("valid-retry-0")).topics.single())
+		assertEquals("valid", assertNotNull(registry.findByTopic("valid.retry-0")).topics.single())
 	}
 
 	@Test

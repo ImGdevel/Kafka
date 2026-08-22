@@ -23,7 +23,7 @@ class CustomRetryDltPolicyTest {
 		blockingRetryOn: List<Class<out Throwable>> = emptyList(),
 	) = CustomRetryDltPolicy(
 		topics = listOf("orders"),
-		dltTopicSuffix = "-dlt",
+		dltTopicSuffix = ".dlt",
 		owner = "team",
 		alertOnDlt = true,
 		attempts = 1,

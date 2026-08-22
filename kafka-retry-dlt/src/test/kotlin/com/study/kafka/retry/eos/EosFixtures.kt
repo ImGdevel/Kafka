@@ -88,7 +88,7 @@ class ProducerGate {
 
 				"abortTransaction" -> abortCount.incrementAndGet()
 				"send" -> (args?.getOrNull(0) as? ProducerRecord<*, *>)
-					?.takeIf { it.topic().endsWith("-dlt") }
+					?.takeIf { it.topic().endsWith(".dlt") }
 					?.let { dltSendAttempts.incrementAndGet() }
 
 				"sendOffsetsToTransaction" -> currentGroup.set(

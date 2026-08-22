@@ -22,7 +22,7 @@ class RetryTopicPresenceRulesTest {
 		dltStrategy: DltStrategy = DltStrategy.FAIL_ON_ERROR,
 	) = CustomRetryDltPolicy(
 		topics = listOf(topic),
-		dltTopicSuffix = "-dlt",
+		dltTopicSuffix = ".dlt",
 		owner = "",
 		alertOnDlt = true,
 		attempts = 3,
@@ -44,12 +44,12 @@ class RetryTopicPresenceRulesTest {
 		val manual = policy("orders", autoCreateTopics = false)
 
 		val required = RetryTopicPresenceRules.requiredTopics(
-			subscribedTopics = listOf("orders", "orders-retry-0", "orders-retry-1", "orders-dlt"),
+			subscribedTopics = listOf("orders", "orders.retry-0", "orders.retry-1", "orders.dlt"),
 			mainTopics = setOf("orders"),
 			policyFor = lookup(manual),
 		)
 
-		assertEquals(setOf("orders-retry-0", "orders-retry-1", "orders-dlt"), required.keys)
+		assertEquals(setOf("orders.retry-0", "orders.retry-1", "orders.dlt"), required.keys)
 	}
 
 	@Test
@@ -73,7 +73,7 @@ class RetryTopicPresenceRulesTest {
 		val auto = policy("orders", autoCreateTopics = true)
 
 		val required = RetryTopicPresenceRules.requiredTopics(
-			subscribedTopics = listOf("orders", "orders-retry-0", "orders-dlt"),
+			subscribedTopics = listOf("orders", "orders.retry-0", "orders.dlt"),
 			mainTopics = setOf("orders"),
 			policyFor = lookup(auto),
 		)
@@ -102,17 +102,17 @@ class RetryTopicPresenceRulesTest {
 	fun `missing topics are reported with their listener`() {
 		val manual = policy("orders", autoCreateTopics = false, listenerId = "OrderListener#handle")
 		val required = RetryTopicPresenceRules.requiredTopics(
-			subscribedTopics = listOf("orders-retry-0", "orders-dlt"),
+			subscribedTopics = listOf("orders.retry-0", "orders.dlt"),
 			mainTopics = setOf("orders"),
 			policyFor = lookup(manual),
 		)
 
-		val missing = RetryTopicPresenceRules.missingTopics(required, existingTopics = setOf("orders", "orders-dlt"))
+		val missing = RetryTopicPresenceRules.missingTopics(required, existingTopics = setOf("orders", "orders.dlt"))
 
-		assertEquals(setOf("orders-retry-0"), missing.keys)
+		assertEquals(setOf("orders.retry-0"), missing.keys)
 
 		val message = RetryTopicPresenceRules.describe(missing)
-		assertTrue(message.contains("orders-retry-0"), message)
+		assertTrue(message.contains("orders.retry-0"), message)
 		assertTrue(message.contains("OrderListener#handle"), message)
 		assertTrue(message.contains("autoCreateTopics"), message)
 	}
@@ -124,11 +124,11 @@ class RetryTopicPresenceRulesTest {
 		val auto = policy("audits", autoCreateTopics = true, listenerId = "AuditListener#handle")
 
 		val required = RetryTopicPresenceRules.requiredTopics(
-			subscribedTopics = listOf("orders-dlt", "audits-dlt"),
+			subscribedTopics = listOf("orders.dlt", "audits.dlt"),
 			mainTopics = setOf("orders", "audits"),
 			policyFor = lookup(manual, auto),
 		)
 
-		assertEquals(setOf("orders-dlt"), required.keys)
+		assertEquals(setOf("orders.dlt"), required.keys)
 	}
 }

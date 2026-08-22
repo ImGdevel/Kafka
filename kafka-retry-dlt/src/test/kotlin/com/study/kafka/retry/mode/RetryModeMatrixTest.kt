@@ -27,6 +27,7 @@ import kotlin.test.assertTrue
 	properties = [
 		"spring.kafka.bootstrap-servers=\${spring.embedded.kafka.brokers}",
 		"spring.kafka.consumer.auto-offset-reset=earliest",
+		"app.kafka.retry.auto-create-topics=true",
 		"app.kafka.retry.replication-factor=1",
 		"app.kafka.retry.backoff.delay=100",
 		"app.kafka.retry.backoff.multiplier=2.0",
@@ -97,10 +98,10 @@ class RetryModeMatrixTest {
 	@DisplayName("1분면 blocking + DLT: 같은 토픽에서 3회 처리 후 DLT")
 	fun `blocking with dlt`() {
 		assertEquals(
-			listOf("mode-bd", "mode-bd", "mode-bd", "mode-bd-dlt"),
+			listOf("mode-bd", "mode-bd", "mode-bd", "mode-bd.dlt"),
 			recorder.of(BlockingWithDltListener.KEY),
 		)
-		assertTrue("mode-bd-dlt" in brokerTopics)
+		assertTrue("mode-bd.dlt" in brokerTopics)
 		assertNoRetryTopicFor("mode-bd")
 	}
 
@@ -111,7 +112,7 @@ class RetryModeMatrixTest {
 			listOf("mode-bn", "mode-bn", "mode-bn"),
 			recorder.of(BlockingWithoutDltListener.KEY),
 		)
-		assertFalse("mode-bn-dlt" in brokerTopics, "NO_DLT인데 DLT 토픽이 생겼다")
+		assertFalse("mode-bn.dlt" in brokerTopics, "NO_DLT인데 DLT 토픽이 생겼다")
 		assertNoRetryTopicFor("mode-bn")
 	}
 
@@ -119,20 +120,20 @@ class RetryModeMatrixTest {
 	@DisplayName("3분면 non-blocking + DLT: 각 토픽 1회씩 거쳐 DLT")
 	fun `non blocking with dlt`() {
 		assertEquals(
-			listOf("mode-nd", "mode-nd-retry-0", "mode-nd-retry-1", "mode-nd-dlt"),
+			listOf("mode-nd", "mode-nd.retry-0", "mode-nd.retry-1", "mode-nd.dlt"),
 			recorder.of(NonBlockingWithDltListener.KEY),
 		)
-		assertTrue("mode-nd-dlt" in brokerTopics)
+		assertTrue("mode-nd.dlt" in brokerTopics)
 	}
 
 	@Test
 	@DisplayName("4분면 non-blocking + DLT 없음: 재시도 토픽까지만 가고 폐기")
 	fun `non blocking without dlt`() {
 		assertEquals(
-			listOf("mode-nn", "mode-nn-retry-0", "mode-nn-retry-1"),
+			listOf("mode-nn", "mode-nn.retry-0", "mode-nn.retry-1"),
 			recorder.of(NonBlockingWithoutDltListener.KEY),
 		)
-		assertFalse("mode-nn-dlt" in brokerTopics, "NO_DLT인데 DLT 토픽이 생겼다")
+		assertFalse("mode-nn.dlt" in brokerTopics, "NO_DLT인데 DLT 토픽이 생겼다")
 	}
 
 	@Test
@@ -140,13 +141,13 @@ class RetryModeMatrixTest {
 	fun `blocking is filtered by exception type`() {
 		// blockingAttempts=3이지만 blockingRetryOn=[IllegalArgumentException]이고 실제 예외는 IllegalStateException이다.
 		assertEquals(
-			listOf("mode-bx", "mode-bx-dlt"),
+			listOf("mode-bx", "mode-bx.dlt"),
 			recorder.of(BlockingFilteredListener.KEY),
 		)
 	}
 
 	private fun assertNoRetryTopicFor(topic: String) {
-		val retryTopics = brokerTopics.filter { it.startsWith("$topic-retry") }
+		val retryTopics = brokerTopics.filter { it.startsWith("$topic.retry") }
 		assertEquals(emptyList(), retryTopics, "블로킹 모드인데 재시도 토픽이 만들어졌다")
 	}
 }

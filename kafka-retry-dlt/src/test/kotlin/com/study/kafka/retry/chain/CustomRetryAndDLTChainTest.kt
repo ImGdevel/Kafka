@@ -35,6 +35,7 @@ import kotlin.test.assertTrue
 		"app.kafka.retry.backoff.delay=100",
 		"app.kafka.retry.backoff.multiplier=2.0",
 		"app.kafka.retry.backoff.max-delay=1000",
+		"app.kafka.retry.auto-create-topics=true",
 		"app.kafka.retry.replication-factor=1",
 	],
 )
@@ -58,7 +59,7 @@ class CustomRetryAndDLTChainTest {
 	fun resetRecorder() = recorder.reset()
 
 	@Test
-	@DisplayName("실패 메시지는 orders → orders-retry-0 → orders-retry-1 → orders-dlt 순으로 흐른다")
+	@DisplayName("실패 메시지는 orders → orders.retry-0 → orders.retry-1 → orders.dlt 순으로 흐른다")
 	fun `poison message walks the whole retry chain into the dlt`() {
 		kafkaTemplate.send(OrderEventListener.TOPIC, "poison-1")
 
@@ -68,7 +69,7 @@ class CustomRetryAndDLTChainTest {
 		)
 
 		assertEquals(
-			listOf("orders", "orders-retry-0", "orders-retry-1", "orders-dlt"),
+			listOf("orders", "orders.retry-0", "orders.retry-1", "orders.dlt"),
 			recorder.topicsFor("poison-1"),
 		)
 	}
@@ -92,7 +93,7 @@ class CustomRetryAndDLTChainTest {
 
 		AdminClient.create(kafkaAdmin.configurationProperties).use { admin ->
 			val topics = admin.listTopics().names().get(10, TimeUnit.SECONDS)
-			assertTrue(topics.containsAll(listOf("orders", "orders-retry-0", "orders-retry-1", "orders-dlt")))
+			assertTrue(topics.containsAll(listOf("orders", "orders.retry-0", "orders.retry-1", "orders.dlt")))
 		}
 	}
 
@@ -106,7 +107,7 @@ class CustomRetryAndDLTChainTest {
 		assertEquals(1, alerts.size)
 		with(alerts.single()) {
 			assertEquals("order-team", owner)
-			assertEquals("orders-dlt", dltTopic)
+			assertEquals("orders.dlt", dltTopic)
 			assertEquals("OrderEventListener#handle", listenerId)
 			assertTrue(reason?.contains("처리 불가 메시지") == true, "실패 사유가 알림에 담기지 않았다: $reason")
 		}
@@ -119,8 +120,8 @@ class CustomRetryAndDLTChainTest {
 		assertTrue(recorder.dltLatch.await(30, TimeUnit.SECONDS), "30초 안에 DLT 핸들러가 호출되지 않았다")
 
 		// attempts=2 이므로 원본 1회 + 재시도 1회 후 DLT로 간다.
-		// 재시도 토픽이 하나뿐이면 SUFFIX_WITH_INDEX_VALUE라도 인덱스를 붙이지 않아 이름이 `audits-retry`가 된다.
-		assertEquals(listOf("audits", "audits-retry", "audits-dlt"), recorder.topicsFor("poison-4"))
+		// 재시도 토픽이 하나뿐이면 SUFFIX_WITH_INDEX_VALUE라도 인덱스를 붙이지 않아 이름이 `audits.retry`가 된다.
+		assertEquals(listOf("audits", "audits.retry", "audits.dlt"), recorder.topicsFor("poison-4"))
 		assertEquals(emptyList(), recorder.allAlerts())
 	}
 
@@ -130,9 +131,9 @@ class CustomRetryAndDLTChainTest {
 		with(assertNotNull(policyRegistry.findByOriginalTopic(OrderEventListener.TOPIC))) {
 			assertEquals("order-team", owner)
 			assertTrue(alertOnDlt)
-			assertEquals(listOf("orders-dlt"), dltTopics)
+			assertEquals(listOf("orders.dlt"), dltTopics)
 		}
-		with(assertNotNull(policyRegistry.findByTopic("audits-dlt"))) {
+		with(assertNotNull(policyRegistry.findByTopic("audits.dlt"))) {
 			assertEquals("audit-team", owner)
 			assertEquals(false, alertOnDlt)
 		}

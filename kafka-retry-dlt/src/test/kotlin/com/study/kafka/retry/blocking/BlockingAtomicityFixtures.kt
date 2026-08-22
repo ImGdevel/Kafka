@@ -101,7 +101,7 @@ class CommitFailureGate {
 				"beginTransaction" -> currentGroup.remove()
 
 				"send" -> (args?.getOrNull(0) as? ProducerRecord<*, *>)
-					?.takeIf { it.topic().endsWith("-dlt") }
+					?.takeIf { it.topic().endsWith(".dlt") }
 					?.let { dltSendAttempts.incrementAndGet() }
 
 				"sendOffsetsToTransaction" -> currentGroup.set(
@@ -276,7 +276,7 @@ class SendFailListener(private val recorder: BlockingRecorder) {
 
 	companion object {
 		const val TOPIC = "blk-send"
-		const val DLT_TOPIC = "blk-send-dlt"
+		const val DLT_TOPIC = "blk-send.dlt"
 		const val GROUP = "g-blk-send"
 		const val LISTENER_ID = "blk-send-listener"
 		const val BLOCKING_ATTEMPTS = 3

@@ -32,7 +32,7 @@ class SendGate {
 	fun stopFailing() = failing.set(false)
 
 	fun shouldFail(topic: String): Boolean {
-		if (!topic.endsWith("-dlt")) return false
+		if (!topic.endsWith(".dlt")) return false
 		attemptedDltSends.incrementAndGet()
 		return failing.get()
 	}

@@ -26,6 +26,7 @@ import kotlin.test.assertTrue
 		"spring.kafka.consumer.properties.max.poll.interval.ms=5000",
 		"spring.kafka.consumer.properties.session.timeout.ms=10000",
 		"spring.kafka.consumer.properties.heartbeat.interval.ms=1000",
+		"app.kafka.retry.auto-create-topics=true",
 		"app.kafka.retry.replication-factor=1",
 	],
 )

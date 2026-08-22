@@ -62,9 +62,17 @@ annotation class CustomRetryAndDLT(
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "listenerContainerFactory")
 	val listenerContainerFactory: String = "",
 
-	/** 재시도/DLT 토픽 자동 생성 여부. `@RetryableTopic.autoCreateTopics` 별칭. */
+	/**
+	 * 재시도/DLT 토픽 자동 생성 여부. `@RetryableTopic.autoCreateTopics` 별칭.
+	 *
+	 * Spring Kafka 기본값과 반대로 `false`로 둔다. 토픽은 인프라 자산이라 파티션 수와 복제 계수,
+	 * 보존 정책이 애플리케이션 기동 순서에 따라 우연히 정해지면 안 된다.
+	 * 대신 [RetryTopicPresenceValidator]가 기동 시점에 토픽 존재를 확인하고 없으면 기동을 실패시킨다.
+	 *
+	 * 개발이나 테스트처럼 토픽을 즉석에서 만들고 싶으면 `app.kafka.retry.auto-create-topics=true` 로 되돌린다.
+	 */
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "autoCreateTopics")
-	val autoCreateTopics: String = "\${app.kafka.retry.auto-create-topics:true}",
+	val autoCreateTopics: String = "\${app.kafka.retry.auto-create-topics:false}",
 
 	/** 자동 생성 시 파티션 수. `@RetryableTopic.numPartitions` 별칭. */
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "numPartitions")
@@ -101,13 +109,21 @@ annotation class CustomRetryAndDLT(
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "traversingCauses")
 	val traversingCauses: String = "\${app.kafka.retry.traversing-causes:false}",
 
-	/** 재시도 토픽 접미사. `@RetryableTopic.retryTopicSuffix` 별칭. */
+	/**
+	 * 재시도 토픽 접미사. `@RetryableTopic.retryTopicSuffix` 별칭.
+	 *
+	 * 구분자를 하이픈이 아니라 점으로 둔다. 원본 토픽 이름에 하이픈이 흔해서
+	 * `order-events-retry-0` 처럼 붙으면 어디까지가 원본인지 눈으로 구분되지 않는다.
+	 *
+	 * 주의: Kafka 는 메트릭 이름에서 `.` 를 `_` 로 치환해 `a.b` 와 `a_b` 가 공존할 수 없다.
+	 * 원본 토픽 이름에 `_` 를 쓰는 컨벤션이면 이 접미사를 하이픈으로 되돌려라.
+	 */
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "retryTopicSuffix")
-	val retryTopicSuffix: String = "\${app.kafka.retry.retry-topic-suffix:-retry}",
+	val retryTopicSuffix: String = "\${app.kafka.retry.retry-topic-suffix:.retry}",
 
-	/** DLT 접미사. `@RetryableTopic.dltTopicSuffix` 별칭. */
+	/** DLT 접미사. `@RetryableTopic.dltTopicSuffix` 별칭. 구분자는 [retryTopicSuffix]와 같은 이유로 점이다. */
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "dltTopicSuffix")
-	val dltTopicSuffix: String = "\${app.kafka.retry.dlt-topic-suffix:-dlt}",
+	val dltTopicSuffix: String = "\${app.kafka.retry.dlt-topic-suffix:.dlt}",
 
 	/** 예외 종류별 DLT 분기. `@RetryableTopic.exceptionBasedDltRouting` 별칭. */
 	@get:AliasFor(annotation = RetryableTopic::class, attribute = "exceptionBasedDltRouting")
