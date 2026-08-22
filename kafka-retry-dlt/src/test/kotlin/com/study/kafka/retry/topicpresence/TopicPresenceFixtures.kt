@@ -114,3 +114,37 @@ class StaleRetryTopicListener(private val recorder: TopicPresenceRecorder) {
 		const val BLOCKING_ATTEMPTS = 3
 	}
 }
+
+/**
+ * 블로킹 전용인데 재시도 토픽이 아예 없는 리스너.
+ *
+ * `attempts=1`이라 목적지 체인은 원본과 DLT뿐이므로 재시도 토픽은 필요하지 않다.
+ * `autoCreateTopics=false`이고 브로커 자동 생성도 꺼져 있으므로, DLT만 미리 만들어 두면
+ * 재시도 토픽 없이도 끝까지 흘러야 한다.
+ */
+@Component
+class BlockingWithoutRetryTopicListener(private val recorder: TopicPresenceRecorder) {
+
+	@CustomRetryAndDLT(
+		attempts = "1",
+		blockingAttempts = "3",
+		blockingBackoffDelay = "50",
+		autoCreateTopics = "false",
+	)
+	@KafkaListener(id = LISTENER_ID, topics = [TOPIC], groupId = "g-presence-blocking")
+	fun handle(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String): Unit =
+		alwaysFail(payload, topic, recorder)
+
+	@DltHandler
+	fun dlt(payload: String, @Header(KafkaHeaders.RECEIVED_TOPIC) topic: String) {
+		log.info("DLT 수신 topic={} payload={}", topic, payload)
+		recorder.record(payload, topic)
+	}
+
+	companion object {
+		const val TOPIC = "presence-blocking"
+		const val DLT_TOPIC = "presence-blocking-dlt"
+		const val LISTENER_ID = "presence-blocking-listener"
+		const val BLOCKING_ATTEMPTS = 3
+	}
+}

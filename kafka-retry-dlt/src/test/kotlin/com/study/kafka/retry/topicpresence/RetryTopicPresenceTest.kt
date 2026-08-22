@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry
 import org.springframework.kafka.core.KafkaAdmin
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.test.context.EmbeddedKafka
@@ -40,6 +41,9 @@ import kotlin.test.assertTrue
 		MissingRetryTopicListener.TOPIC,
 		StaleRetryTopicListener.TOPIC,
 		StaleRetryTopicListener.STALE_RETRY_TOPIC,
+		// 블로킹 전용은 재시도 토픽 없이 DLT만 있으면 된다.
+		BlockingWithoutRetryTopicListener.TOPIC,
+		BlockingWithoutRetryTopicListener.DLT_TOPIC,
 	],
 	brokerProperties = ["auto.create.topics.enable=false"],
 )
@@ -54,6 +58,9 @@ class RetryTopicPresenceTest {
 
 	@Autowired
 	private lateinit var kafkaAdmin: KafkaAdmin
+
+	@Autowired
+	private lateinit var endpointRegistry: KafkaListenerEndpointRegistry
 
 	private fun brokerTopics(prefix: String) =
 		AdminClient.create(kafkaAdmin.configurationProperties).use { admin ->
@@ -119,5 +126,47 @@ class RetryTopicPresenceTest {
 		)
 		// 토픽 자체는 그대로 남아 있다. 지워지지도, 비워지지도 않는다.
 		assertFalse(brokerTopics(StaleRetryTopicListener.STALE_RETRY_TOPIC).isEmpty())
+	}
+
+	@Test
+	@DisplayName("재시도 토픽이 없어도 기동은 성공한다. 실패는 런타임에야 드러난다")
+	fun `absent retry topic does not fail startup`() {
+		// 컨텍스트가 떴다는 것 자체가 첫 번째 증거다. 기동 시점 검증이 없다는 뜻이다.
+		val containers = endpointRegistry.listenerContainerIds.filter {
+			it.startsWith(MissingRetryTopicListener.LISTENER_ID)
+		}
+
+		// 재시도 토픽 리스너 컨테이너까지 만들어지고 돌아간다. 구독 대상 토픽이 없어도 막지 않는다.
+		assertTrue(containers.isNotEmpty(), "리스너 컨테이너가 없다")
+		assertTrue(
+			containers.all { endpointRegistry.getListenerContainer(it)?.isRunning == true },
+			"기동하지 못한 컨테이너가 있다 → $containers",
+		)
+		// 그런데 브로커에는 원본 토픽 하나뿐이다.
+		assertEquals(listOf(MissingRetryTopicListener.TOPIC), brokerTopics(MissingRetryTopicListener.TOPIC))
+	}
+
+	@Test
+	@DisplayName("블로킹 전용은 재시도 토픽이 없어도 DLT까지 정상 동작한다")
+	fun `blocking only works without any retry topic`() {
+		kafkaTemplate.send(BlockingWithoutRetryTopicListener.TOPIC, "blocking-no-retry")
+
+		assertTrue(
+			recorder.awaitTopic("blocking-no-retry", BlockingWithoutRetryTopicListener.DLT_TOPIC, 60),
+			"DLT까지 가지 못했다 → ${recorder.hopsFor("blocking-no-retry")}",
+		)
+		Thread.sleep(2_000)
+
+		assertEquals(
+			List(BlockingWithoutRetryTopicListener.BLOCKING_ATTEMPTS) { BlockingWithoutRetryTopicListener.TOPIC } +
+				BlockingWithoutRetryTopicListener.DLT_TOPIC,
+			recorder.hopsFor("blocking-no-retry"),
+		)
+
+		// 재시도 토픽은 끝까지 만들어지지 않았다. 블로킹 경로는 그것을 필요로 하지 않는다.
+		assertEquals(
+			listOf(BlockingWithoutRetryTopicListener.TOPIC, BlockingWithoutRetryTopicListener.DLT_TOPIC),
+			brokerTopics(BlockingWithoutRetryTopicListener.TOPIC),
+		)
 	}
 }
