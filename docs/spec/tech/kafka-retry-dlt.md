@@ -252,3 +252,79 @@ spring.kafka.consumer.isolation-level: read-committed
 - **`autoCreateTopics=false`(기본값)에서 토픽이 없으면 기동이 실패한다.** 의도된 동작이다. 그대로 뜨면 첫 장애 메시지에서 파티션이 조용히 멈춘다.
 - **블로킹 횟수가 10을 넘으면 `Backoff ... exhausted` 로그가 뜬다.** 컨테이너 기본 롤백 처리기가 자기 카운터를 따로 세기 때문이다. 레코드가 버려진 것처럼 보이지만 실제로는 설정한 횟수를 끝까지 채운다.
 - **리스너와 DLT 핸들러는 멱등해야 한다.** at-least-once 구성에서는 중복이, 롤백 후 재처리에서는 블로킹 한 벌이 통째로 반복된다.
+
+---
+
+## 8. 전체 흐름 한 장으로
+
+1~4절을 한 그림으로 이었다. 위쪽이 1절(누가 처리하는가), 가운데가 2절(공통 엔진), 아래로 갈라지는 두 갈래가 3절(붙였을 때)과 4절(안 붙였을 때)이다.
+
+```mermaid
+flowchart TD
+    F["리스너에서 예외 발생"] --> Q1{"@CustomRetryAndDLT<br/>붙어 있나?"}
+
+    Q1 -->|예| RT["ListenerContainerFactoryConfigurer.decorate()<br/>컨테이너 생성 시점에 강제로 셋업"]
+    RT --> RTH["container.setCommonErrorHandler(<br/>new DefaultErrorHandler(recoverer, backOff))<br/>· recoverer = DeadLetterPublishingRecoverer(리스너별)<br/>· backOffFunction = 토픽별 블로킹 정책<br/>· commitRecovered = true<br/>· TX 유무 무관 항상 적용"]
+
+    Q1 -->|아니오| Q2{"전역 CommonErrorHandler<br/>빈이 있나?"}
+    Q2 -->|예| GLOBAL["그 빈이 그대로 쓰임<br/>(재시도 횟수·recoverer 모두 그 빈 설정)"]
+
+    Q2 -->|아니오| Q3{"KafkaAwareTransactionManager<br/>가 있나?"}
+    Q3 -->|없음| ADHOC["ListenerConsumer가 즉석 생성<br/>new DefaultErrorHandler()<br/>· FixedBackOff(0, 9)<br/>· recoverer = null"]
+    Q3 -->|있음| ARP["container.getCommonErrorHandler() == null 로 남음<br/>AfterRollbackProcessor 경로<br/>· AbstractMessageListenerContainer 필드 기본값<br/>· 역시 FixedBackOff(0, 9), recoverer = null"]
+
+    RTH --> A1["invokeErrorHandler"]
+    GLOBAL --> A1
+    ADHOC --> A1
+    ARP --> A2["recordAfterRollback"]
+
+    A1 --> B1["DefaultErrorHandler.handleRemaining"]
+    A2 --> B2["DefaultAfterRollbackProcessor.process"]
+
+    B1 --> C["SeekUtils.seekOrRecover<br/>FailedRecordProcessor 공통 로직<br/>(두 클래스 모두 이 부모를 상속)"]
+    B2 --> C
+
+    C --> D["FailedRecordTracker.recovered()"]
+    D --> E{"분류기 통과?<br/>classify(unwrap(ex))"}
+    E -->|false| SKIP["NO_RETRIES_OR_DELAY_BACKOFF<br/>재시도 없이 곧바로 소진 취급"]
+    E -->|true| BO["backOffFunction으로 BackOff 선택<br/>→ 컨슈머 스레드에서 Thread.sleep"]
+
+    BO --> EX{"시도 소진?"}
+    SKIP --> EX
+
+    EX -->|아니오| SEEK["consumer.seek() 되감기<br/>RecordInRetryException throw"]
+    SEEK --> POLL["다음 poll에서 같은 레코드 재배달"]
+    POLL -.->|"RTH/GLOBAL/ADHOC 경로"| A1
+    POLL -.->|"ARP 경로 (TX 롤백됨)"| A2
+
+    EX -->|예| REC{"recoverer 종류는?"}
+
+    REC -->|"DeadLetterPublishingRecoverer<br/>(RTH, 3절)"| RESOLVE{"DestinationTopicResolver<br/>다음 홉이 남았나?"}
+    RESOLVE -->|"있음 → 3-2 논블로킹 체인"| NEXTHOP["다음 재시도 토픽으로 발행<br/>orders → orders.retry-N"]
+    NEXTHOP --> NEWCONSUME["재시도 토픽 컨슈머가 새로 소비<br/>= 완전히 새 poll 사이클·새 컨테이너"]
+    NEWCONSUME -.->|"거기서 또 실패"| A1
+    RESOLVE -->|"없음 → 3-1 블로킹 소진 or 체인 끝"| DLTPUB["DLT 토픽으로 발행<br/>orders.dlt"]
+
+    REC -->|"전역 빈이 정한 recoverer<br/>(GLOBAL)"| GLOBALREC["빈 설정대로 처리<br/>DLT일 수도, 로깅뿐일 수도"]
+
+    REC -->|"null → 로깅 전용 기본값<br/>(ADHOC/ARP, 4절 · 애노테이션 없음)"| LOGONLY["ERROR 로그 한 줄만<br/>Backoff ... exhausted for ..."]
+
+    DLTPUB --> CM{"commitRecovered?"}
+    GLOBALREC --> CM
+    LOGONLY --> CM
+
+    CM -->|true| COMMIT["오프셋 커밋<br/>consumer.commitSync 또는<br/>sendOffsetsToTransaction"]
+    CM -->|false| DONE["컨테이너 기본 커밋 정책에 맡김"]
+
+    COMMIT --> OUT1["@DltHandler 호출<br/>DLTPUB였던 경우"]
+    COMMIT --> OUT2["메시지 소멸, 흔적은 로그뿐<br/>LOGONLY였던 경우 · 4절 실측"]
+
+    NEWCONSUME -.- FORBID["⚠ attempts>1 이면서 blockingAttempts>1 이면<br/>SEEK→POLL→A1 루프가 홉마다 또 반복<br/>총 시도 = attempts × blockingAttempts (실측 9=3×3)<br/>@CustomRetryAndDLT는 기동 시점에 이 조합 자체를 막는다"]
+```
+
+**읽는 법**
+
+- `Q1`/`Q2`/`Q3` — 1절 그대로. `RTH`/`GLOBAL`/`ADHOC`/`ARP` 네 갈래로 갈린다.
+- `A1`/`A2` → `B1`/`B2` → `C` — 2절. `DefaultErrorHandler`와 `DefaultAfterRollbackProcessor`는 진입 메서드 이름은 다르지만 둘 다 `FailedRecordProcessor`를 상속해 같은 `seekOrRecover` 로직을 탄다. ARP도 이 엔진을 그대로 탄다는 뜻이다.
+- `REC` 이후 `DeadLetterPublishingRecoverer` 갈래 — 3절. `RESOLVE`(다음 홉이 남았는지)가 3-1(블로킹 전용)과 3-2(논블로킹 체인)를 가르는 지점이다. 다음 홉이 없으면 바로 DLT(3-1), 있으면 다음 재시도 토픽으로(3-2). `FORBID` 노드는 두 축을 동시에 켰을 때의 금지된 조합(실측 9 = 3 × 3)을 표시한다.
+- `REC`에서 `null → LOGONLY` 갈래 — 4절. `ADHOC`과 `ARP` 둘 다 recoverer 기본값이 없어 여기로 합류한다. 결과는 로그 한 줄과 메시지 소멸(`OUT2`)이다.
